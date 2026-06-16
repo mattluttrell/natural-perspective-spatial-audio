@@ -15,8 +15,8 @@ from pathlib import Path
 from . import RIGHTS_NOTICE, __version__
 from .envfile import load_env
 from .ingest import expand_inputs
-from .pipeline import (STANDARDS, Bins, SkippedInput, TrackMeta, process,
-                       process_natural, retag_tree)
+from .pipeline import (STANDARDS, Bins, SkippedInput, TrackMeta,
+                       ensure_ffmpeg_on_path, process, process_natural, retag_tree)
 from .system_profile import parse_system_profile
 
 
@@ -87,6 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     load_env()  # pick up ANTHROPIC_API_KEY etc. from .env if present
     args = build_parser().parse_args(argv)
+    ensure_ffmpeg_on_path(args.ffmpeg_bin)  # fall back to static-ffmpeg if needed
 
     if args.retag is not None:
         done, skipped = retag_tree(args.retag, progress=lambda m: print(f"  {m}", flush=True),

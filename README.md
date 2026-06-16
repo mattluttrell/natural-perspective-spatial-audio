@@ -18,15 +18,23 @@ output of the tool.
 ## Run it
 
 ```bash
-pip install .              # the model layer: pip install '.[natural]'
+pip install '.[full]'                # batteries included (CPU)
 spatial-standards song.flac          # also: a folder, or a URL
 spatial-standards-gui                # or the GUI
 ```
 
-Needs **FFmpeg** and **Demucs** on your PATH — plus **audio-separator** (live
-crowd handling) and **yt-dlp** (URL inputs). The base install has no required
-Python packages. The model layer needs an `ANTHROPIC_API_KEY`; without one the
-tool falls back to a built-in mix and runs fully offline.
+`[full]` brings everything as Python packages — FFmpeg + ffprobe (via
+`static-ffmpeg`), Demucs, the crowd model (`audio-separator`), and `yt-dlp` —
+so a fresh machine works after one install, no system setup. It's **CPU by
+default**; for an NVIDIA GPU install a CUDA build of PyTorch from pytorch.org
+and `pip install 'audio-separator[gpu]'` (much faster). The **first run
+downloads model weights** (a few hundred MB).
+
+Prefer your own tools? `pip install .` has **no required Python packages** and
+just calls `ffmpeg`, `demucs`, `audio-separator`, and `yt-dlp` from your PATH.
+
+The model layer needs an `ANTHROPIC_API_KEY`; without one the tool falls back to
+a built-in mix and runs fully offline.
 
 Output drops straight into Plex/Jellyfin/Kodi:
 

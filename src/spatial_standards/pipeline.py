@@ -52,6 +52,22 @@ class Bins:
     ytdlp: str = "yt-dlp"
 
 
+def ensure_ffmpeg_on_path(ffmpeg: str = "ffmpeg") -> None:
+    """If ffmpeg isn't found, fall back to the pip-installed ``static-ffmpeg``
+    (the ``[full]`` extra), which provides both ffmpeg and ffprobe and prepends
+    them to PATH — so a fresh machine works with no system FFmpeg install. The
+    binaries are fetched once on first use. Best-effort and silent: if neither
+    a system ffmpeg nor static-ffmpeg is present, the normal "not found" error
+    later guides the user to install FFmpeg."""
+    if shutil.which(ffmpeg) or os.path.isfile(ffmpeg):
+        return
+    try:
+        import static_ffmpeg
+        static_ffmpeg.add_paths()  # downloads once, prepends ffmpeg+ffprobe to PATH
+    except Exception:
+        pass
+
+
 @dataclass
 class TrackMeta:
     artist: str | None = None

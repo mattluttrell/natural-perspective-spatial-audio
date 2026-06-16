@@ -26,7 +26,8 @@ from tkinter import filedialog, font as tkfont, messagebox, ttk
 from . import RIGHTS_NOTICE, __version__
 from .envfile import load_env
 from .ingest import expand_inputs, has_directory, is_url
-from .pipeline import Bins, SkippedInput, process, process_natural
+from .pipeline import (Bins, SkippedInput, ensure_ffmpeg_on_path, process,
+                       process_natural)
 from .system_profile import parse_system_profile
 
 ACK_FILE = Path.home() / ".config" / "spatial-standards" / "rights-acknowledged"
@@ -420,6 +421,7 @@ class App:
     def run_batch(self, sources: list[str], standard: str, optimized: bool, out: Path,
                   profile=None, comments_path: str | None = None, want_video: bool = False):
         bins = bins_from_env()
+        ensure_ffmpeg_on_path(bins.ffmpeg)  # fall back to static-ffmpeg if missing
         # The comments field accepts either a file path or typed-in notes.
         comments = comments_text = None
         if comments_path:

@@ -21,6 +21,19 @@ dependencies = []
 # (output_config.format); bump the floor if your version predates it.
 natural = ["anthropic>=0.40"]
 
+# Batteries-included, CPU by default: brings the external tools as Python
+# packages so a fresh machine works after one `pip install`. static-ffmpeg
+# provides the ffmpeg AND ffprobe binaries (auto-detected when none is on
+# PATH). For an NVIDIA GPU, install GPU builds instead: a CUDA torch from
+# pytorch.org and `audio-separator[gpu]` (much faster separation).
+full = [
+    "anthropic>=0.40",
+    "demucs>=4.0",
+    "audio-separator[cpu]",
+    "yt-dlp",
+    "static-ffmpeg",
+]
+
 [project.scripts]
 spatial-standards = "spatial_standards.cli:main"
 
