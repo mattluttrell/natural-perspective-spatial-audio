@@ -1,0 +1,49 @@
+Spatial Standards — reference implementation of the On Stage Spatial Standard
+and the Front Row Spatial Standard.
+
+Copyright 2026 Clearbay AI
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. See the
+LICENSE for the full disclaimer of warranty and limitation of liability.
+
+INPUT RIGHTS. This software processes audio supplied by the user — local
+files or URLs. By processing any file or URL you affirm that you own, or
+otherwise have the legal right to use and process, that content. The authors
+host no content, provide no catalogs, and ship no audio. Responsibility for
+the lawfulness of input material rests entirely with the user.
+
+THIRD-PARTY COMPONENTS. This software depends on, but does not bundle or
+redistribute, the following. Each remains under its own license and terms;
+install them separately.
+
+Python packages:
+  - anthropic (MIT License) — optional; the Anthropic API client used by the
+    Natural Perspective control layer. Installed only with the [natural] extra.
+    The base install has no required third-party Python packages.
+
+External commands (found on PATH; never bundled or redistributed):
+  - FFmpeg (LGPL/GPL depending on build) — audio/video processing. Required.
+  - Demucs (MIT License) — source-separation models, downloaded on first run
+    from their original host.
+  - audio-separator (MIT License, by Andrew Beveridge) — runs the crowd-
+    separation pass; required for Natural Perspective and the Front Row
+    template.
+  - yt-dlp (Unlicense / public domain) — used only for URL inputs.
+
+Models (downloaded on first run from their original hosts, not bundled):
+  - Demucs htdemucs_6s weights (see Demucs, above).
+  - Mel-Band RoFormer crowd-separation checkpoint, by the community authors
+    aufr33 and viperx (the "Mel-Band RoFormer" architecture). The checkpoint
+    is loaded via audio-separator. Its redistribution terms are the model
+    authors' own; verify them for your use.
+
+Other:
+  - "Inter" typeface (SIL Open Font License 1.1) — referenced by name for the
+    UI/report; not bundled. The interface falls back to a system sans-serif
+    when Inter is not installed.
+
+NO AFFILIATION. References to media-server, hardware, or platform brands in
+documentation are descriptive only and imply no affiliation, sponsorship, or
+endorsement.

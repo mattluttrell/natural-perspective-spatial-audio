@@ -1,0 +1,12 @@
+*.flac
+*.mp3
+*.wav
+*.ckpt
+*.onnx
+__pycache__/
+.venv/
+dist/
+build/
+.env
+.claude/
+*.egg-info/
