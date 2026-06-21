@@ -40,7 +40,8 @@ say "Using $("$PY" --version) ($(command -v "$PY"))"
 say "Creating virtualenv (.venv) and installing — this pulls PyTorch, so it's a few GB…"
 "$PY" -m venv .venv
 ./.venv/bin/python -m pip install --quiet --upgrade pip
-./.venv/bin/python -m pip install '.[full]'
+# Editable: a later `git pull` picks up code changes with no reinstall.
+./.venv/bin/python -m pip install -e '.[full]'
 
 # Verify every tool actually resolves (the dependency check). Uses the app's
 # own resolver so it matches runtime, and pre-fetches a bundled ffmpeg via

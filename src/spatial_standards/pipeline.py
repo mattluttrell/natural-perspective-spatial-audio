@@ -62,10 +62,20 @@ def resolve_bin(name: str) -> str:
     found = shutil.which(name)
     if found:
         return found
-    bindir = Path(sys.executable).resolve().parent
-    for cand in (bindir / name, bindir / f"{name}.exe"):
-        if cand.exists():
-            return str(cand)
+    # Check the interpreter's own directory first (the venv bin, where pip puts
+    # console scripts), then the symlink target's directory. Do NOT rely on
+    # resolve() alone: a venv's python is a symlink to the base interpreter, but
+    # the scripts live next to the symlink — not next to its target (this is the
+    # normal layout on macOS/Linux).
+    exe = Path(sys.executable)
+    seen: list[Path] = []
+    for bindir in (exe.parent, exe.resolve().parent):
+        if bindir in seen:
+            continue
+        seen.append(bindir)
+        for cand in (bindir / name, bindir / f"{name}.exe"):
+            if cand.exists():
+                return str(cand)
     return name
 
 
