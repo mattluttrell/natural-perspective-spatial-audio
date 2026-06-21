@@ -17,11 +17,17 @@ output of the tool.
 
 ## Run it
 
+Needs **Python 3.10+** (3.12 recommended — widest wheel coverage). From a clone:
+
 ```bash
-pip install '.[full]'                # batteries included (CPU)
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install '.[full]'                # quote it — the [..] is a shell glob otherwise
 spatial-standards song.flac          # also: a folder, or a URL
 spatial-standards-gui                # or the GUI
 ```
+
+The GUI uses **Tkinter**: it ships with the python.org installer (recommended on
+macOS), with Homebrew add `python-tk`, on Debian/Ubuntu `apt install python3-tk`.
 
 `[full]` brings everything as Python packages — FFmpeg + ffprobe (via
 `static-ffmpeg`), Demucs, the crowd model (`audio-separator`), and `yt-dlp` —
