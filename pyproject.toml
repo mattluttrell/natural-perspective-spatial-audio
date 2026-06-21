@@ -32,6 +32,13 @@ full = [
     "audio-separator[cpu]",
     "yt-dlp",
     "static-ffmpeg",
+    # From torchaudio 2.8 on, audio save/load is routed through a separate
+    # `torchcodec` package (which itself needs system FFmpeg libraries), and
+    # Demucs's stem-writing dies with `ModuleNotFoundError: torchcodec`. 2.7.x
+    # keeps built-in I/O. `soundfile` is a belt-and-suspenders audio backend.
+    "torch<2.8",
+    "torchaudio<2.8",
+    "soundfile",
 ]
 
 [project.scripts]
