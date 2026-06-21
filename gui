@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Launch the GUI from the project's own virtualenv (no `activate` needed).
+# Run ./install.sh first.
+cd "$(dirname "$0")"
+if [ ! -x .venv/bin/spatial-standards-gui ]; then
+  echo "Not installed yet — run ./install.sh first." >&2
+  exit 1
+fi
+exec .venv/bin/spatial-standards-gui "$@"

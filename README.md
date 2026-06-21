@@ -17,7 +17,17 @@ output of the tool.
 
 ## Run it
 
-Needs **Python 3.10+** (3.12 recommended — widest wheel coverage). From a clone:
+**One command** (macOS/Linux) — sets up a private virtualenv and installs
+everything; on a Mac with Homebrew it installs Python for you too:
+
+```bash
+./install.sh
+./gui                                # the GUI   (or: .venv/bin/spatial-standards song.flac)
+```
+
+<details><summary>Manual / Windows</summary>
+
+Needs **Python 3.10+** (3.12 recommended — widest wheel coverage):
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
@@ -25,6 +35,7 @@ pip install '.[full]'                # quote it — the [..] is a shell glob oth
 spatial-standards song.flac          # also: a folder, or a URL
 spatial-standards-gui                # or the GUI
 ```
+</details>
 
 The GUI uses **Tkinter**: it ships with the python.org installer (recommended on
 macOS), with Homebrew add `python-tk`, on Debian/Ubuntu `apt install python3-tk`.
