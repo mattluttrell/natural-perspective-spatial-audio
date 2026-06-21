@@ -42,11 +42,34 @@ say "Creating virtualenv (.venv) and installing — this pulls PyTorch, so it's 
 ./.venv/bin/python -m pip install --quiet --upgrade pip
 ./.venv/bin/python -m pip install '.[full]'
 
-# The GUI needs Tkinter; warn (don't fail) if this Python lacks it.
+# Verify every tool actually resolves (the dependency check). Uses the app's
+# own resolver so it matches runtime, and pre-fetches a bundled ffmpeg via
+# static-ffmpeg if the system has none — so the first run isn't slow.
+say "Verifying tools…"
+if ! ./.venv/bin/python - <<'PY'
+import sys
+from spatial_standards.pipeline import resolve_bin, ensure_ffmpeg_on_path
+ensure_ffmpeg_on_path()
+missing = []
+for n in ("ffmpeg", "demucs", "audio-separator", "yt-dlp"):
+    p = resolve_bin(n)
+    ok = p != n
+    print(f"  {'ok  ' if ok else 'MISS'}  {n}{('  ' + p) if ok else ''}")
+    if not ok:
+        missing.append(n)
+try:
+    import tkinter  # noqa: F401
+    print("  ok    tkinter (desktop GUI)")
+except Exception:
+    print("  --    tkinter unavailable — the CLI works, the GUI won't")
+sys.exit(1 if missing else 0)
+PY
+then
+  say "A required tool failed to install. Re-run ./install.sh; if it persists, paste the output above."
+  exit 1
+fi
 if ! ./.venv/bin/python -c 'import tkinter' 2>/dev/null; then
-  say "Note: this Python has no Tkinter, so only the CLI will run."
-  echo "  macOS+Homebrew: brew install python-tk@3.12   (then re-run ./install.sh)"
-  echo "  Debian/Ubuntu:  sudo apt install python3-tk"
+  echo "  For the GUI, add Tkinter: macOS 'brew install python-tk@3.12', Ubuntu 'sudo apt install python3-tk', then re-run."
 fi
 
 say "Done. Run it:"

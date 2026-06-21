@@ -27,7 +27,7 @@ from . import RIGHTS_NOTICE, __version__
 from .envfile import load_env
 from .ingest import expand_inputs, has_directory, is_url
 from .pipeline import (Bins, SkippedInput, ensure_ffmpeg_on_path, process,
-                       process_natural)
+                       process_natural, resolve_bin)
 from .system_profile import parse_system_profile
 
 ACK_FILE = Path.home() / ".config" / "spatial-standards" / "rights-acknowledged"
@@ -131,11 +131,12 @@ def apply_theme(root: tk.Tk, scale: float = 1.0) -> None:
 
 
 def bins_from_env() -> Bins:
+    # An explicit env override wins; otherwise resolve from PATH or the venv.
     return Bins(
-        ffmpeg=os.environ.get("SPATIAL_STANDARDS_FFMPEG", "ffmpeg"),
-        demucs=os.environ.get("SPATIAL_STANDARDS_DEMUCS", "demucs"),
-        separator=os.environ.get("SPATIAL_STANDARDS_SEPARATOR", "audio-separator"),
-        ytdlp=os.environ.get("SPATIAL_STANDARDS_YTDLP", "yt-dlp"),
+        ffmpeg=os.environ.get("SPATIAL_STANDARDS_FFMPEG") or resolve_bin("ffmpeg"),
+        demucs=os.environ.get("SPATIAL_STANDARDS_DEMUCS") or resolve_bin("demucs"),
+        separator=os.environ.get("SPATIAL_STANDARDS_SEPARATOR") or resolve_bin("audio-separator"),
+        ytdlp=os.environ.get("SPATIAL_STANDARDS_YTDLP") or resolve_bin("yt-dlp"),
     )
 
 

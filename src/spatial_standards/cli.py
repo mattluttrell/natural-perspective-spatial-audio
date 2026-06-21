@@ -16,7 +16,8 @@ from . import RIGHTS_NOTICE, __version__
 from .envfile import load_env
 from .ingest import expand_inputs
 from .pipeline import (STANDARDS, Bins, SkippedInput, TrackMeta,
-                       ensure_ffmpeg_on_path, process, process_natural, retag_tree)
+                       ensure_ffmpeg_on_path, process, process_natural,
+                       resolve_bin, retag_tree)
 from .system_profile import parse_system_profile
 
 
@@ -115,8 +116,10 @@ def main(argv: list[str] | None = None) -> int:
     print(RIGHTS_NOTICE)
     print()
 
-    bins = Bins(ffmpeg=args.ffmpeg_bin, demucs=args.demucs_bin,
-                separator=args.separator_bin, ytdlp=args.ytdlp_bin)
+    # resolve_bin: a bare default (e.g. "demucs") resolves from PATH or the
+    # venv bin; an explicit --*-bin path is returned unchanged.
+    bins = Bins(ffmpeg=resolve_bin(args.ffmpeg_bin), demucs=resolve_bin(args.demucs_bin),
+                separator=resolve_bin(args.separator_bin), ytdlp=resolve_bin(args.ytdlp_bin))
     meta = TrackMeta(artist=args.artist, title=args.title,
                      track_number=args.track_number, date=args.date)
 

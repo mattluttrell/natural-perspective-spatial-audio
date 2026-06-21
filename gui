@@ -6,4 +6,7 @@ if [ ! -x .venv/bin/spatial-standards-gui ]; then
   echo "Not installed yet — run ./install.sh first." >&2
   exit 1
 fi
+# Put the venv bin on PATH so demucs/audio-separator/yt-dlp resolve even without
+# `activate` (the code also resolves them, but this keeps any child process happy).
+export PATH="$PWD/.venv/bin:$PATH"
 exec .venv/bin/spatial-standards-gui "$@"

@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,22 @@ class Bins:
     demucs: str = "demucs"
     separator: str = "audio-separator"
     ytdlp: str = "yt-dlp"
+
+
+def resolve_bin(name: str) -> str:
+    """Locate an external tool. Order: an absolute/explicit path or one on PATH,
+    else the same directory as the running Python — which is where
+    ``pip install '.[full]'`` drops ``demucs``/``audio-separator``/``yt-dlp``,
+    so the GUI finds them even when the venv was never "activated". Falls back
+    to the bare name so the clear "not found" error still fires."""
+    found = shutil.which(name)
+    if found:
+        return found
+    bindir = Path(sys.executable).resolve().parent
+    for cand in (bindir / name, bindir / f"{name}.exe"):
+        if cand.exists():
+            return str(cand)
+    return name
 
 
 def ensure_ffmpeg_on_path(ffmpeg: str = "ffmpeg") -> None:
