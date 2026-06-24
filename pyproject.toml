@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "natural-perspective-spatial-audio"
-version = "0.1.0"
+version = "0.2.0.dev0"
 description = "Turn any recording into a 7.1 surround mix: a model designs a per-song spatial placement and renders a lossless 8-channel FLAC."
 readme = "README.md"
 license = { file = "LICENSE" }
