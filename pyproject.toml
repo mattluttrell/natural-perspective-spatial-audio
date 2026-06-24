@@ -3,13 +3,26 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "spatial-standards"
-version = "0.1.0.dev0"
-description = "Reference implementation of the On Stage and Front Row Spatial Standards: turn any recording into an 8-channel (7.1) 24-bit FLAC spatial mix."
+name = "natural-perspective-spatial-audio"
+version = "0.1.0"
+description = "Turn any recording into a 7.1 surround mix: a model designs a per-song spatial placement and renders a lossless 8-channel FLAC."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [{ name = "Clearbay AI" }]
+keywords = ["spatial audio", "surround sound", "7.1", "flac", "demucs",
+            "source separation", "plex", "jellyfin", "home theater"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Conversion",
+]
 # No required third-party packages — the pipeline drives external commands
 # (FFmpeg, Demucs, audio-separator, yt-dlp). Natural Perspective adds one
 # optional package; see [project.optional-dependencies].
@@ -40,6 +53,11 @@ full = [
     "torchaudio<2.8",
     "soundfile",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mattluttrell/natural-perspective-spatial-audio"
+Repository = "https://github.com/mattluttrell/natural-perspective-spatial-audio"
+Issues = "https://github.com/mattluttrell/natural-perspective-spatial-audio/issues"
 
 [project.scripts]
 spatial-standards = "spatial_standards.cli:main"

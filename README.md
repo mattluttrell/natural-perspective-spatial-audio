@@ -5,7 +5,7 @@ instrument stems, a model invents a scene and decides where each instrument
 sits around you — then a deterministic renderer builds a lossless 8-channel
 (7.1) FLAC for your media server.
 
-![Soundstage](examples/soundstage.png)
+![Soundstage](https://raw.githubusercontent.com/mattluttrell/natural-perspective-spatial-audio/main/examples/soundstage.png)
 
 *One real mix: every stem placed on the stage, the crowd behind you.*
 
@@ -17,8 +17,16 @@ output of the tool.
 
 ## Run it
 
-**One command** (macOS/Linux) — sets up a private virtualenv and installs
-everything; on a Mac with Homebrew it installs Python for you too:
+Easiest — install from PyPI with [pipx](https://pipx.pypa.io), no clone needed
+(needs Python 3.10+):
+
+```bash
+pipx install 'natural-perspective-spatial-audio[full]'
+spatial-standards-gui                # or:  spatial-standards song.flac
+```
+
+Or from a clone — **one command** (macOS/Linux) sets up a private virtualenv and
+installs everything; on a Mac with Homebrew it installs Python for you too:
 
 ```bash
 ./install.sh
