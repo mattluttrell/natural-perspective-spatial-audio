@@ -7,13 +7,17 @@ cd "$(dirname "$0")"
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
+# Need Python 3.10–3.12: PyTorch <2.8 (pinned for Demucs's audio I/O) has no
+# wheels for 3.13+, so a newer Python can't satisfy the deps.
 find_python() {
-  for c in python3.12 python3.11 python3.13 python3.10 python3 python; do
+  for c in python3.12 python3.11 python3.10 python3 python; do
     command -v "$c" >/dev/null 2>&1 || continue
     local v major minor
     v=$("$c" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null || echo 0.0)
     major=${v%%.*}; minor=${v#*.}
-    if [ "${major:-0}" -eq 3 ] && [ "${minor:-0}" -ge 10 ]; then echo "$c"; return 0; fi
+    if [ "${major:-0}" -eq 3 ] && [ "${minor:-0}" -ge 10 ] && [ "${minor:-0}" -le 12 ]; then
+      echo "$c"; return 0
+    fi
   done
   return 1
 }
@@ -23,19 +27,33 @@ PY="$(find_python || true)"
 # Nothing suitable? On a Mac with Homebrew, install it; otherwise guide the user.
 if [ -z "$PY" ]; then
   if command -v brew >/dev/null 2>&1; then
-    say "No Python 3.10+ found — installing python@3.12 via Homebrew…"
+    say "No Python 3.10–3.12 found — installing python@3.12 via Homebrew…"
     brew install python@3.12 python-tk@3.12
     hash -r
     PY="$(find_python || true)"
   fi
 fi
 if [ -z "$PY" ]; then
-  say "Need Python 3.10+ (3.12 recommended). Install one, then re-run ./install.sh:"
-  echo "  macOS:        install Homebrew (brew.sh), or grab Python from python.org"
+  say "Need Python 3.10–3.12 (3.12 recommended). Install one, then re-run ./install.sh:"
+  echo "  macOS:        install Homebrew (brew.sh), or grab Python 3.12 from python.org"
   echo "  Debian/Ubuntu: sudo apt install python3.12 python3.12-venv python3-tk"
   exit 1
 fi
 say "Using $("$PY" --version) ($(command -v "$PY"))"
+
+# FFmpeg (+ffprobe) is required and is NOT a Python package. Install via brew if
+# it's missing; on other systems, guide the user.
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
+    say "Installing FFmpeg via Homebrew…"
+    brew install ffmpeg
+    hash -r
+  else
+    say "FFmpeg not found — install it, then re-run ./install.sh:"
+    echo "  macOS: brew install ffmpeg   |   Debian/Ubuntu: sudo apt install ffmpeg"
+    exit 1
+  fi
+fi
 
 say "Creating virtualenv (.venv) and installing — this pulls PyTorch, so it's a few GB…"
 "$PY" -m venv .venv
@@ -43,9 +61,8 @@ say "Creating virtualenv (.venv) and installing — this pulls PyTorch, so it's 
 # Editable: a later `git pull` picks up code changes with no reinstall.
 ./.venv/bin/python -m pip install -e '.[full]'
 
-# Verify every tool actually resolves (the dependency check). Uses the app's
-# own resolver so it matches runtime, and pre-fetches a bundled ffmpeg via
-# static-ffmpeg if the system has none — so the first run isn't slow.
+# Verify every tool actually resolves (the dependency check), using the app's
+# own resolver so it matches runtime.
 say "Verifying tools…"
 if ! ./.venv/bin/python - <<'PY'
 import sys
