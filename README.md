@@ -23,6 +23,7 @@ Needs **Python 3.10+** and a **system FFmpeg**:
 ```bash
 brew install ffmpeg                   # macOS; Linux: sudo apt install ffmpeg
 pipx install 'natural-perspective-spatial-audio[full]'
+pipx ensurepath                       # first pipx app only — then open a new terminal
 spatial-standards-gui                # or:  spatial-standards song.flac
 ```
 
