@@ -18,11 +18,11 @@ output of the tool.
 ## Run it
 
 Easiest — install from PyPI with [pipx](https://pipx.pypa.io), no clone needed.
-Needs **Python 3.10–3.12** and a **system FFmpeg**:
+Needs **Python 3.10+** and a **system FFmpeg**:
 
 ```bash
-brew install ffmpeg python@3.12      # macOS; Linux: apt install ffmpeg python3.12
-pipx install --python python3.12 'natural-perspective-spatial-audio[full]'
+brew install ffmpeg                   # macOS; Linux: sudo apt install ffmpeg
+pipx install 'natural-perspective-spatial-audio[full]'
 spatial-standards-gui                # or:  spatial-standards song.flac
 ```
 

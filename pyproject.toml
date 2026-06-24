@@ -4,13 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "natural-perspective-spatial-audio"
-version = "0.1.1"
+version = "0.1.2"
 description = "Turn any recording into a 7.1 surround mix: a model designs a per-song spatial placement and renders a lossless 8-channel FLAC."
 readme = "README.md"
 license = { file = "LICENSE" }
-# Upper bound: PyTorch <2.8 (pinned below for Demucs's audio I/O) has no wheels
-# for Python 3.13+, so the [full] deps can't be satisfied there.
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10"
 authors = [{ name = "Clearbay AI" }]
 keywords = ["spatial audio", "surround sound", "7.1", "flac", "demucs",
             "source separation", "plex", "jellyfin", "home theater"]
@@ -45,12 +43,11 @@ full = [
     "demucs>=4.0",
     "audio-separator[cpu]",
     "yt-dlp",
-    # From torchaudio 2.8 on, audio save/load is routed through a separate
-    # `torchcodec` package (which itself needs system FFmpeg libraries), and
-    # Demucs's stem-writing dies with `ModuleNotFoundError: torchcodec`. 2.7.x
-    # keeps built-in I/O. `soundfile` is a belt-and-suspenders audio backend.
-    "torch<2.8",
-    "torchaudio<2.8",
+    # torchaudio >=2.8 routes audio save/load through torchcodec, which links
+    # against the system FFmpeg libraries (install FFmpeg: `brew install ffmpeg`,
+    # `apt install ffmpeg`). Without it, Demucs's stem-writing dies with
+    # `ModuleNotFoundError: torchcodec`. `soundfile` is a fallback audio backend.
+    "torchcodec",
     "soundfile",
 ]
 

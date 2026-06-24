@@ -1,4 +1,4 @@
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 RIGHTS_NOTICE = (
     "By processing a URL or file you affirm you own or have rights to this "
