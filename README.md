@@ -42,7 +42,7 @@ Needs **Python 3.10+** (3.12 recommended — widest wheel coverage):
 ```bash
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install '.[full]'                # quote it — the [..] is a shell glob otherwise
-spatial-standards song.flac          # also: a folder, or a URL
+spatial-standards song.flac          # also: a folder, a URL, or a YouTube playlist URL
 spatial-standards-gui                # or the GUI
 ```
 </details>

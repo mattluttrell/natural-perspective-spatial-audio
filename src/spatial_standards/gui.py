@@ -144,7 +144,7 @@ class App:
     def __init__(self, root: tk.Tk, initial_inputs: list[str], scale: float = 1.0):
         self.root = root
         s = scale
-        root.title(f"Spatial Standards v{__version__}")
+        root.title(f"Natural Perspective Spatial Audio v{__version__}")
         root.minsize(round(640 * s), round(520 * s))
 
         self.log_queue: queue.Queue[str] = queue.Queue()
@@ -165,7 +165,7 @@ class App:
         ttk.Label(inner, text="clearbay", style="WordDark.TLabel").pack(side="left")
         ttk.Label(inner, text=" | ", style="WordPipe.TLabel").pack(side="left")
         ttk.Label(inner, text="ai", style="WordTeal.TLabel").pack(side="left")
-        ttk.Label(inner, text="Spatial Standards", style="Title.TLabel").pack(side="right")
+        ttk.Label(inner, text="Natural Perspective", style="Title.TLabel").pack(side="right")
         tk.Frame(header, height=1, bg=BORDER).pack(fill="x")
 
         # --- Inputs ---
@@ -389,13 +389,11 @@ class App:
             return
         sources = list(self.listbox.get(0, "end"))
         if not sources:
-            messagebox.showwarning("Spatial Standards", "Add at least one file, folder, or URL.")
+            messagebox.showwarning("Natural Perspective Spatial Audio",
+                                   "Add at least one file, folder, or URL.")
             return
-        try:
-            expanded = expand_inputs(sources, recursive=self.recursive.get())
-        except FileNotFoundError as e:
-            messagebox.showerror("Spatial Standards", str(e))
-            return
+        # Inputs are expanded (folders → files, playlist URLs → each video) in the
+        # worker, so a big playlist lookup doesn't freeze the UI on Go.
         std = self.standard.get()
         opt = self.optimized.get()
         out = Path(self.out_dir.get()).expanduser()
@@ -408,21 +406,33 @@ class App:
             try:
                 profile = parse_system_profile(Path(comments_path).expanduser())
             except OSError as e:
-                messagebox.showerror("Spatial Standards", f"Cannot read comments file:\n{e}")
+                messagebox.showerror("Natural Perspective Spatial Audio",
+                                     f"Cannot read comments file:\n{e}")
                 return
 
         self.save_prefs()
         self.go_btn.configure(state="disabled", text="Working…")
         self.worker = threading.Thread(
             target=self.run_batch,
-            args=(expanded, std, opt, out, profile, comments_path, self.keep_video.get()),
+            args=(sources, std, opt, out, profile, comments_path,
+                  self.keep_video.get(), self.recursive.get()),
             daemon=True)
         self.worker.start()
 
     def run_batch(self, sources: list[str], standard: str, optimized: bool, out: Path,
-                  profile=None, comments_path: str | None = None, want_video: bool = False):
+                  profile=None, comments_path: str | None = None, want_video: bool = False,
+                  recursive: bool = True):
         bins = bins_from_env()
         ensure_ffmpeg_on_path(bins.ffmpeg)  # fall back to static-ffmpeg if missing
+        # Expand folders → files and playlist URLs → each video (network for
+        # playlists), off the UI thread.
+        try:
+            self.log_line("reading inputs…")
+            sources = expand_inputs(sources, recursive=recursive, ytdlp=bins.ytdlp)
+        except (FileNotFoundError, RuntimeError) as e:
+            self.log_line(f"error: {e}")
+            self.root.after(0, lambda: self.go_btn.configure(state="normal", text="Go"))
+            return
         # The comments field accepts either a file path or typed-in notes.
         comments = comments_text = None
         if comments_path:
@@ -463,7 +473,7 @@ def first_run_ack(root: tk.Tk) -> bool:
     if ACK_FILE.exists():
         return True
     ok = messagebox.askokcancel(
-        "Spatial Standards — before you start",
+        "Natural Perspective Spatial Audio — before you start",
         RIGHTS_NOTICE + "\n\nThis software is provided AS-IS, without warranty "
         "of any kind (see LICENSE and NOTICE).\n\nClick OK to acknowledge.",
         parent=root)

@@ -1,5 +1,6 @@
-Spatial Standards — reference implementation of the On Stage Spatial Standard
-and the Front Row Spatial Standard.
+Natural Perspective Spatial Audio — turn any recording into an 8-channel (7.1)
+24-bit FLAC spatial mix. A model designs a per-recording mix from the separated
+stems; the On Stage and Front Row templates ship built in.
 
 Copyright 2026 Clearbay AI
 

@@ -97,8 +97,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        args.inputs = expand_inputs(args.inputs, recursive=not args.no_recursive)
-    except FileNotFoundError as e:
+        args.inputs = expand_inputs(args.inputs, recursive=not args.no_recursive,
+                                    ytdlp=resolve_bin(args.ytdlp_bin))
+    except (FileNotFoundError, RuntimeError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 

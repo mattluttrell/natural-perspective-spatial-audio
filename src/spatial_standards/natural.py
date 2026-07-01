@@ -17,6 +17,8 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import os
+import urllib.request
 from pathlib import Path
 
 from . import mixconfig
@@ -242,6 +244,44 @@ def _make_client(api_key):
     return anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
 
 
+def _research_query(artist, title, source_title) -> str | None:
+    """A concise question for a web-search provider to pin down the recording."""
+    name = " — ".join(x for x in (artist, title) if x) or source_title
+    if not name:
+        return None
+    return (f'"{name}": is this a live or a studio recording? What is the venue '
+            f"or event, and the year? Reply with only the facts.")
+
+
+def _perplexity_research(query: str, api_key: str, timeout: float = 45) -> str | None:
+    """Best-effort web research via the Perplexity API (OpenAI-style chat
+    completions over plain HTTPS — no extra dependency). Returns a short factual
+    summary, or None on any failure so the caller can fall back."""
+    body = {
+        "model": "sonar",
+        "messages": [
+            {"role": "system", "content":
+             "You research music recordings. Reply in 2-4 sentences with only the "
+             "facts useful for spatial mixing: the artist, whether it is a live or "
+             "studio recording, the venue/event, and the year. No preamble, no citations."},
+            {"role": "user", "content": query},
+        ],
+        "max_tokens": 300,
+        "temperature": 0.2,
+    }
+    req = urllib.request.Request(
+        "https://api.perplexity.ai/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            d = json.load(r)
+        txt = (d.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+        return txt or None
+    except Exception:
+        return None
+
+
 def decide(*, artist=None, title=None, source_title=None, source=None,
            cover_art=None, comments_text=None, system_profile=None,
            stem_levels=None, model=DEFAULT_MODEL, api_key=None,
@@ -256,6 +296,23 @@ def decide(*, artist=None, title=None, source_title=None, source=None,
         artist=artist, title=title, source_title=source_title, source=source,
         cover_art=cover_art, comments_text=comments_text,
         system_profile=system_profile, stem_levels=stem_levels)
+
+    # Optional: if PERPLEXITY_API_KEY is set, do the web research with Perplexity
+    # and feed the result to the model instead of Anthropic's built-in web_search
+    # tool (which costs extra and can be flaky with structured output). Best-effort
+    # — on any failure we fall back to Anthropic's tool.
+    px_key = os.environ.get("PERPLEXITY_API_KEY")
+    if web_search and px_key:
+        q = _research_query(artist, title, source_title)
+        research = _perplexity_research(q, px_key) if q else None
+        if research:
+            content.append({"type": "text",
+                            "text": "Web research (via Perplexity) — use it to judge "
+                                    f"live vs studio, venue, and era:\n{research}"})
+            web_search = False  # Perplexity did the research; skip Anthropic's tool
+            if trace is not None:
+                trace["searches"] = [f"(Perplexity) {q}"]
+
     if trace is not None:
         trace["model"] = model
         trace["system"] = SYSTEM_GUIDE

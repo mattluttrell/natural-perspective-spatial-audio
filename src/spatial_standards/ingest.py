@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from .video import VIDEO_EXTENSIONS
 
@@ -19,20 +20,51 @@ def is_url(source: str) -> bool:
     return source.startswith("http://") or source.startswith("https://")
 
 
+def is_playlist_url(url: str) -> bool:
+    """True for a playlist *page* — a `list=` with no specific video. A
+    `watch?v=…&list=…` or a `youtu.be/<id>?list=…` link is treated as the single
+    chosen video (so sharing a video that happens to be in a playlist doesn't
+    pull the whole list); only a bare playlist URL expands to every video."""
+    u = urlparse(url)
+    if u.netloc.endswith("youtu.be") and u.path.strip("/"):
+        return False  # short link — the video id is the path, not ?v=
+    q = parse_qs(u.query)
+    return "list" in q and "v" not in q
+
+
+def _expand_playlist(url: str, ytdlp: str) -> list[str]:
+    """Resolve a playlist URL to canonical single-video watch URLs (metadata
+    only — no downloads), so each is processed as its own input."""
+    cmd = [ytdlp, "--no-cookies-from-browser", "--flat-playlist",
+           "--print", "%(id)s", url]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"yt-dlp failed to read playlist:\n{proc.stderr.strip()}")
+    ids = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+    if not ids:
+        raise RuntimeError(f"No videos found in playlist: {url}")
+    return [f"https://www.youtube.com/watch?v={vid}" for vid in ids]
+
+
 def has_directory(sources: list[str]) -> bool:
     """True if any source is a local directory (drives the GUI's recursive
     checkbox visibility)."""
     return any(not is_url(s) and Path(s).expanduser().is_dir() for s in sources)
 
 
-def expand_inputs(sources: list[str], recursive: bool = True) -> list[str]:
-    """Expand any directories into the audio files they contain (sorted);
-    pass through files and URLs unchanged. `recursive` controls whether
-    sub-folders are descended into (rglob) or only the top level (glob)."""
+def expand_inputs(sources: list[str], recursive: bool = True,
+                  ytdlp: str = "yt-dlp") -> list[str]:
+    """Expand each source into the concrete inputs it represents: a directory
+    becomes the audio/video files it contains (sorted); a playlist URL becomes
+    each video's URL; files and single-video URLs pass through unchanged.
+    `recursive` controls whether sub-folders are descended (rglob vs glob)."""
     out: list[str] = []
     for s in sources:
+        if is_url(s):
+            out.extend(_expand_playlist(s, ytdlp) if is_playlist_url(s) else [s])
+            continue
         p = Path(s).expanduser()
-        if not is_url(s) and p.is_dir():
+        if p.is_dir():
             it = p.rglob("*") if recursive else p.glob("*")
             found = sorted(
                 str(f) for f in it

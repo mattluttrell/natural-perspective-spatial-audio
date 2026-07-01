@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.2.0 — unreleased
+
+- **YouTube playlist support.** A playlist URL is expanded to every video in it,
+  and each is processed as its own track (CLI and GUI). A `watch?v=…&list=…`
+  link still processes just that one video, so sharing a video that happens to be
+  in a playlist doesn't pull the whole list.
+- **Optional Perplexity web search.** Set `PERPLEXITY_API_KEY` and Natural
+  Perspective does its recording research (live vs studio, venue, era) via
+  Perplexity, then designs the mix on Anthropic's reliable no-tool path. Unset,
+  it uses Anthropic's built-in web search as before. Best-effort — falls back if
+  Perplexity errors. No new dependencies (stdlib HTTP).
+- `.env` is now auto-loaded from the current dir, the project root, or
+  `~/.config/spatial-standards/.env` (previously only the current dir).
+
 ## v0.1.0 — first public release
 
 Turn any recording into a **7.1 surround mix**. Stems are separated, their
