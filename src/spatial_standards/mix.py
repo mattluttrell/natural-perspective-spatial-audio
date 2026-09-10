@@ -19,7 +19,8 @@ OTHER_REAR = 1.0   # Front Row: "other" weight in both rear backs
 CROWD_SUR = 0.7    # Front Row: crowd weight in surround L/R
 CROWD_REAR = 1.0   # Front Row: crowd weight in rear back L/R
 
-_BUS = ",alimiter=limit=0.95,aformat=channel_layouts=mono"
+# level=disabled — see mixconfig._BUS: otherwise alimiter lifts the ceiling to 0 dBFS.
+_BUS = ",alimiter=limit=0.95:level=disabled,aformat=channel_layouts=mono"
 
 
 def _run_ffmpeg(inputs: list[Path], graph: str, out_file: Path, ffmpeg_bin: str) -> None:
@@ -99,7 +100,7 @@ def mix_front_row(stems: dict[str, Path], crowds: list[Path],
               stems["piano"], stems["other"], *crowds]
     crowd_idx = "".join(f"[{6 + i}]" for i in range(len(crowds)))
     crowd_bus = (
-        f"{crowd_idx}amix=inputs={len(crowds)}:normalize=0,alimiter=limit=0.95,"
+        f"{crowd_idx}amix=inputs={len(crowds)}:normalize=0,alimiter=limit=0.95:level=disabled,"
         if len(crowds) > 1 else "[6]"
     )
     graph = f"""

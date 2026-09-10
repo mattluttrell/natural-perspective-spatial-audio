@@ -96,7 +96,7 @@ def apply_gains(mix_file: Path, gains: list[float], out_file: Path,
                 ffmpeg_bin: str = "ffmpeg") -> Path:
     split = "[0]channelsplit=channel_layout=7.1" + "".join(f"[c{i}]" for i in range(8)) + ";"
     buses = "".join(
-        f"[c{i}]volume={gains[i]:.2f}dB,alimiter=limit=0.95,aformat=channel_layouts=mono[o{i}];"
+        f"[c{i}]volume={gains[i]:.2f}dB,alimiter=limit=0.95:level=disabled,aformat=channel_layouts=mono[o{i}];"
         for i in range(8)
     )
     merge = "".join(f"[o{i}]" for i in range(8)) + "amerge=inputs=8"

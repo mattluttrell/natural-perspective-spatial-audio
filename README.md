@@ -60,8 +60,9 @@ downloads model weights** (a few hundred MB).
 Prefer your own tools? `pip install .` has **no required Python packages** and
 just calls `ffmpeg`, `demucs`, `audio-separator`, and `yt-dlp` from your PATH.
 
-The model layer needs an `ANTHROPIC_API_KEY`; without one the tool falls back to
-a built-in mix and runs fully offline.
+The model layer needs an `ANTHROPIC_API_KEY` — paste it into the GUI (it is saved
+to `~/.config/spatial-standards/.env`) or put it in `.env`; without one the
+tool falls back to a built-in mix and runs fully offline.
 
 Output drops straight into Plex/Jellyfin/Kodi:
 

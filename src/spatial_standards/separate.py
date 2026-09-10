@@ -22,7 +22,8 @@ def separate_stems(audio: Path, work_dir: Path, demucs_bin: str = "demucs",
     """Run Demucs once; return {stem name: wav path}. `progress(pct, eta)`
     receives its progress bar (and, on first run, the model download)."""
     out_dir = work_dir / "stems"
-    res = proc.run([demucs_bin, "-n", DEMUCS_MODEL, "-o", str(out_dir), str(audio)],
+    # --int24: Demucs writes 16-bit WAV by default; the stems feed a 24-bit mix.
+    res = proc.run([demucs_bin, "-n", DEMUCS_MODEL, "--int24", "-o", str(out_dir), str(audio)],
                    progress=progress)
     if res.returncode != 0:
         raise RuntimeError(f"demucs failed:\n{res.stderr.strip()[-2000:]}")

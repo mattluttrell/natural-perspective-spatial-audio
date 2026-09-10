@@ -20,7 +20,10 @@ STEMS = ("vocals", "guitar", "piano", "bass", "drums", "other", "crowd")
 
 MAX_WEIGHT = 4.0
 LIMIT = 0.95
-_BUS = f"alimiter=limit={LIMIT},aformat=channel_layouts=mono"
+# level=disabled: alimiter's default "auto level" scales the output back up
+# by 1/limit, which turns a 0.95 ceiling into 0 dBFS (measured +0.45 dB).
+# Disabled, the ceiling really is 0.95 (about -0.45 dBFS of headroom).
+_BUS = f"alimiter=limit={LIMIT}:level=disabled,aformat=channel_layouts=mono"
 
 
 # The default config: Front Row + Optimized, used verbatim when no model

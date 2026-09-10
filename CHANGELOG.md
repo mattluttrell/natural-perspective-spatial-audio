@@ -18,6 +18,22 @@
   alone, with the update command shown in the error instead.
 - `[full]` now installs `yt-dlp[default,deno]` — the JavaScript runtime and
   challenge scripts YouTube requires; a bare `yt-dlp` no longer works there.
+- **Sound:** every channel limiter now really caps at 0.95. ffmpeg's
+  `alimiter` auto-level (on by default) scaled the output back up by 1/limit,
+  so the ceiling had been 0 dBFS (measured +0.45 dB). Demucs now writes
+  24-bit stems (`--int24`) instead of 16-bit into the 24-bit mix. The rest
+  of the listening review — LFE level, BS.1770 loudness, stereo stems,
+  a better vocal model — is in `docs/listening-review-2026-09.md`.
+- **GUI:** paste an Anthropic API key straight into the window (saved to
+  `~/.config/spatial-standards/.env`, no relaunch); a tool status line under
+  the log (which tools resolved, which yt-dlp); an "Open output folder"
+  button; Delete/Backspace remove selected inputs; per-track and total
+  elapsed times; a shorter input list so Go and the log stay on screen on
+  HiDPI displays.
+- `scripts/release_check.py`: a monthly "does this need a release?" report —
+  unreleased work on main, plus a fresh `pip install` of the *published*
+  package run end to end on CPU (and one model call) so a dependency that
+  breaks new users is noticed within the month.
 - Faster: stem-level measurement and stem caching run their seven ffmpeg
   passes concurrently instead of one after another.
 - Fixed: an unexpected error while reading inputs left the GUI stuck on

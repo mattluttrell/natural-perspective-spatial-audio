@@ -16,8 +16,11 @@ from __future__ import annotations
 import json
 import os
 import queue
+import shutil
+import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import tkinter as tk
@@ -32,6 +35,7 @@ from .system_profile import parse_system_profile
 
 ACK_FILE = Path.home() / ".config" / "spatial-standards" / "rights-acknowledged"
 SETTINGS_FILE = Path.home() / ".config" / "spatial-standards" / "settings.json"
+USER_ENV_FILE = Path.home() / ".config" / "spatial-standards" / ".env"  # read by envfile.load_env
 URL_FIELD_NOTICE = ("By processing a URL or file you affirm you own or have "
                     "rights to this content.")
 LOGO = Path(__file__).parent / "assets" / "clearbay-logo.png"
@@ -47,6 +51,11 @@ BTN_BORDER = "#2A4A7F"  # .cb-btn border
 BTN_HOVER = "#0D2847"   # .cb-btn:hover — deeper navy
 TEAL = "#0D9488"        # --color-teal (unchanged)
 FONT = "Inter"          # --font-sans (falls back if not installed)
+
+
+def _elapsed(t0: float) -> str:
+    secs = int(time.monotonic() - t0)
+    return f"{secs // 60}m{secs % 60:02d}s" if secs >= 60 else f"{secs}s"
 
 
 def load_settings() -> dict:
@@ -144,6 +153,7 @@ class App:
     def __init__(self, root: tk.Tk, initial_inputs: list[str], scale: float = 1.0):
         self.root = root
         s = scale
+        self._s = scale
         root.title(f"Natural Perspective Spatial Audio v{__version__}")
         root.minsize(round(640 * s), round(520 * s))
 
@@ -184,12 +194,14 @@ class App:
         ttk.Label(frm_in, text=URL_FIELD_NOTICE, style="Muted.TLabel",
                   wraplength=round(600 * s)).pack(fill="x", padx=round(8 * s))
 
-        self.listbox = tk.Listbox(frm_in, height=18, selectmode="extended",
+        self.listbox = tk.Listbox(frm_in, height=6, selectmode="extended",
                                   bg=PANEL, fg=FG, selectbackground=TEAL,
                                   selectforeground=PANEL,
                                   highlightthickness=1, highlightbackground=BORDER,
                                   highlightcolor=BORDER, borderwidth=0)
         self.listbox.pack(fill="both", expand=True, **pad)
+        self.listbox.bind("<Delete>", lambda e: self.remove_selected())
+        self.listbox.bind("<BackSpace>", lambda e: self.remove_selected())
 
         botrow = ttk.Frame(frm_in, style="Card.TFrame")
         botrow.pack(fill="x", padx=round(8 * s), pady=(0, round(6 * s)))
@@ -208,16 +220,17 @@ class App:
         # Natural Perspective is the only GUI mode; legacy fixed mixes live in the CLI.
         self.standard = tk.StringVar(value="natural")
         self.optimized = tk.BooleanVar(value=False)  # decided per track by the config
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            key_line = "API key detected — the model designs each mix."
-        else:
-            key_line = ("No API key found — the default mix is used. Set "
-                        "ANTHROPIC_API_KEY or put it in .env, then relaunch.")
-        ttk.Label(frm_opt,
-                  text="A model designs the spatial mix for each recording. " + key_line
-                       + " Video files come out as MKV with the picture kept.",
-                  style="Muted.TLabel", wraplength=round(600 * s)).pack(
-                      anchor="w", padx=8, pady=(6, 2))
+        self.key_label = ttk.Label(frm_opt, style="Muted.TLabel", wraplength=round(600 * s))
+        self.key_label.pack(anchor="w", padx=8, pady=(6, 2))
+        # No key yet? Take it here and save it to the user config .env (which
+        # load_env reads), so nobody has to find a dotfile or relaunch.
+        self.key_row = ttk.Frame(frm_opt, style="Card.TFrame")
+        ttk.Label(self.key_row, text="Anthropic API key:", style="Card.TLabel").pack(side="left")
+        self.key_entry = ttk.Entry(self.key_row, show="•")
+        self.key_entry.pack(side="left", fill="x", expand=True, padx=4)
+        self.key_entry.bind("<Return>", lambda e: self.save_api_key())
+        ttk.Button(self.key_row, text="Save", command=self.save_api_key).pack(side="left")
+        self.refresh_key_state()
 
         self.keep_video = tk.BooleanVar(value=False)
         ttk.Checkbutton(frm_opt, text="Output video (MKV) — keep the picture for "
@@ -259,6 +272,13 @@ class App:
         # yt-dlp can't update itself). Updates also happen automatically before
         # a download; this is the manual button for "YouTube stopped working".
         ttk.Button(gorow, text="Update yt-dlp", command=self.update_ytdlp).pack(side="right")
+        ttk.Button(gorow, text="Open output folder", command=self.open_out_dir).pack(
+            side="right", padx=4)
+
+        # Which tools resolved, and which yt-dlp — the first thing to look at
+        # when a run fails. Filled in off the UI thread (yt-dlp --version).
+        self.status = ttk.Label(root, text="checking tools…", style="Muted.TLabel")
+        self.status.pack(side="bottom", anchor="w", padx=round(10 * s), pady=(0, round(6 * s)))
 
         self.log = tk.Text(root, height=10, state="disabled",
                            bg=PANEL, fg=MUTED, insertbackground=FG,
@@ -297,6 +317,7 @@ class App:
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(200, self.drain_log)
+        threading.Thread(target=self.refresh_status, daemon=True).start()
 
     def save_prefs(self):
         save_settings({
@@ -357,6 +378,69 @@ class App:
         for i in reversed(self.listbox.curselection()):
             self.listbox.delete(i)
         self.refresh_recursive_visibility()
+
+    def open_out_dir(self):
+        d = Path(self.out_dir.get()).expanduser()
+        if not d.is_dir():
+            self.log_line(f"output folder does not exist yet: {d}")
+            return
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", str(d)])
+        elif os.name == "nt":
+            os.startfile(str(d))  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["xdg-open", str(d)])
+
+    def refresh_key_state(self):
+        have = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        self.key_label.configure(
+            text="A model designs the spatial mix for each recording. "
+                 + ("API key detected — the model designs each mix." if have else
+                    "No API key found — the default mix is used until you add one.")
+                 + " Video files come out as MKV with the picture kept.")
+        if have:
+            self.key_row.pack_forget()
+        else:
+            self.key_row.pack(fill="x", padx=round(24 * self._s), pady=(0, 6),
+                              after=self.key_label)
+
+    def save_api_key(self):
+        key = self.key_entry.get().strip()
+        if not key:
+            return
+        try:
+            USER_ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
+            lines = [ln for ln in (USER_ENV_FILE.read_text().splitlines()
+                                   if USER_ENV_FILE.exists() else [])
+                     if not ln.strip().startswith("ANTHROPIC_API_KEY=")]
+            lines.append(f"ANTHROPIC_API_KEY={key}")
+            USER_ENV_FILE.write_text("\n".join(lines) + "\n")
+            try:
+                USER_ENV_FILE.chmod(0o600)
+            except OSError:
+                pass
+        except OSError as e:
+            self.log_line(f"could not save the key to {USER_ENV_FILE}: {e}")
+            return
+        os.environ["ANTHROPIC_API_KEY"] = key  # the client reads it per call, no relaunch
+        self.key_entry.delete(0, "end")
+        self.log_line(f"API key saved to {USER_ENV_FILE} — Natural Perspective is on.")
+        self.refresh_key_state()
+
+    def refresh_status(self):
+        """Tool status line: '✓ ffmpeg · ✓ demucs · ✗ audio-separator · yt-dlp 2026.08.19'."""
+        bins = bins_from_env()
+        ensure_ffmpeg_on_path(bins.ffmpeg)
+        parts = []
+        for name, path in (("ffmpeg", bins.ffmpeg), ("demucs", bins.demucs),
+                           ("audio-separator", bins.separator)):
+            parts.append(("✓ " if shutil.which(path) else "✗ ") + name)
+        v = ytdlp_update.installed_version(bins.ytdlp) if shutil.which(bins.ytdlp) else None
+        parts.append(f"yt-dlp {v}" if v else "✗ yt-dlp")
+        text = "  ·  ".join(parts)
+        if any(p.startswith("✗") for p in parts):
+            text += "   — a ✗ tool is not installed or not on PATH (see README)"
+        self.root.after(0, lambda: self.status.configure(text=text))
 
     def pick_out(self):
         d = filedialog.askdirectory(title="Output library folder",
@@ -506,7 +590,9 @@ class App:
             else:
                 comments_text = comments_path
         failures = skipped = 0
+        t_batch = time.monotonic()
         for i, src in enumerate(sources, 1):
+            t0 = time.monotonic()
             if proc.cancelled():
                 self.log_line(f"Cancelled with {len(sources) - i + 1} input(s) left.")
                 break
@@ -517,13 +603,13 @@ class App:
                         src, out_dir=out, bins=bins, comments=comments,
                         comments_text=comments_text, want_video=want_video,
                         progress=lambda m: self.log_line(f"    {m}"))
-                    self.log_line(f"    -> {dest}")
+                    self.log_line(f"    -> {dest}  ({_elapsed(t0)})")
                     self.log_line(f"    docs -> {sidecar.parent / 'index.html'}")
                 else:
                     dest = process(src, standard=standard, optimized=optimized,
                                    out_dir=out, bins=bins, system_profile=profile,
                                    progress=lambda m: self.log_line(f"    {m}"))
-                    self.log_line(f"    -> {dest}")
+                    self.log_line(f"    -> {dest}  ({_elapsed(t0)})")
             except SkippedInput as e:
                 skipped += 1
                 self.log_line(f"    skipped: {e}")
@@ -535,7 +621,8 @@ class App:
                 self.log_line(f"    FAILED: {e}")
         else:
             ok = len(sources) - failures - skipped
-            self.log_line(f"Finished: {ok} ok, {failures} failed, {skipped} skipped.")
+            self.log_line(f"Finished in {_elapsed(t_batch)}: {ok} ok, {failures} failed, "
+                          f"{skipped} skipped.")
 
 
 def first_run_ack(root: tk.Tk) -> bool:
