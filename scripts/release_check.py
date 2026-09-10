@@ -224,12 +224,18 @@ def smoke_test(repo: Path, clip_src: Path | None, python: str, keep_venv: Path |
             step(f"{tool} present in venv", (bin_dir / tool).exists(),
                  "" if (bin_dir / tool).exists() else f"missing {bin_dir / tool}")
 
-        # 3. yt-dlp still talks to YouTube (metadata only, no download)
+        # 3. yt-dlp still talks to YouTube (metadata only, no download). PATH is
+        # cut down to the venv plus the system dirs so a deno/node on *this*
+        # machine can't paper over a missing runtime in the install — yt-dlp
+        # still succeeds without one today, but warns that extraction is
+        # deprecated and formats may be missing. That warning is a failure here.
         t = time.monotonic()
         r = sh([str(bin_dir / "yt-dlp"), "--no-cookies-from-browser", "--simulate",
                 "--no-playlist", "--print", "%(title)s", YT_PROBE_URL], timeout=180,
-               env=dict(env, PATH=f"{bin_dir}:{env.get('PATH', '')}"))
-        step("yt-dlp resolves a YouTube video", r.returncode == 0 and bool(r.stdout.strip()),
+               env=dict(env, PATH=f"{bin_dir}:/usr/bin:/bin"))
+        no_runtime = "JavaScript runtime" in r.stderr
+        step("yt-dlp resolves a YouTube video (venv-only PATH)",
+             r.returncode == 0 and bool(r.stdout.strip()) and not no_runtime,
              (r.stdout.strip()[:80] + "\n" + r.stderr.strip()[-600:]), time.monotonic() - t)
 
         # 4. the pipeline end to end on CPU with the built-in config (no API)
