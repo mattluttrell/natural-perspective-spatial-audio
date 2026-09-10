@@ -38,8 +38,18 @@ no `twine` to run by hand.
 
    If it doesn't appear, check the **Actions** tab for a failed run.
 
-6. **(Optional) GitHub Release** — Releases → *Draft a new release* → pick the
-   tag → paste the changelog → Publish. Nice-to-have, not required for install.
+6. **GitHub Release** — with the `gh` CLI, from the changelog section:
+
+   ```bash
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes-file notes.md --verify-tag
+   gh run list --limit 3          # the "Publish to PyPI" run should be green
+   ```
+
+   Nice-to-have, not required for install.
+
+7. **Back to development** — bump both version fields to the next
+   `X.Y+1.0.dev0` and open a new `## vX.Y+1.0 — unreleased` changelog section,
+   so `main` never sits on a published number.
 
 ## One-time setup (already done)
 
@@ -57,6 +67,16 @@ PyPI Trusted Publisher, configured at PyPI → project → *Settings → Publish
 PyPI versions are immutable — you can't overwrite one. **Yank** it instead
 (PyPI → project → *Manage → Releases* → version → *Yank*): it stays installable
 if explicitly pinned, but pip stops choosing it. Then ship a fixed patch version.
+
+## Is a release due?
+
+`scripts/release_check.py` answers that unattended: commits and changelog
+since the last tag versus PyPI, plus a fresh `pip install` of the *published*
+package into a venv, run end to end on CPU (and one model call), so a
+dependency that breaks new users shows up within the month. It runs monthly on
+matt-kitchen (user timer `natural-perspective-check.timer`, 1st at 07:00) and
+emails the report; run it by hand with `scripts/release_check.py --skip-smoke`
+for the quick version or without the flag for the full 15–20 minute check.
 
 ## Notes
 
