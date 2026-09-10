@@ -1,5 +1,7 @@
 # Changelog
 
+## v0.3.0 — unreleased
+
 ## v0.2.0 — 2026-09-10
 
 - **Live progress.** Downloads, the crowd split and Demucs report percent
