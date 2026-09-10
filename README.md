@@ -50,10 +50,10 @@ spatial-standards-gui                # or the GUI
 The GUI uses **Tkinter**: it ships with the python.org installer (recommended on
 macOS), with Homebrew add `python-tk`, on Debian/Ubuntu `apt install python3-tk`.
 
-`[full]` brings everything as Python packages — FFmpeg + ffprobe (via
-`static-ffmpeg`), Demucs, the crowd model (`audio-separator`), and `yt-dlp` —
-so a fresh machine works after one install, no system setup. It's **CPU by
-default**; for an NVIDIA GPU install a CUDA build of PyTorch from pytorch.org
+`[full]` brings the Python-side tools — Demucs, the crowd model
+(`audio-separator`), and `yt-dlp` with the JavaScript runtime YouTube needs —
+so with a system FFmpeg installed, one install is the whole setup. It's **CPU
+by default**; for an NVIDIA GPU install a CUDA build of PyTorch from pytorch.org
 and `pip install 'audio-separator[gpu]'` (much faster). The **first run
 downloads model weights** (a few hundred MB).
 
@@ -68,6 +68,18 @@ Output drops straight into Plex/Jellyfin/Kodi:
 ```
 <Artist>/Natural Perspective Spatial Audio/<Title> [...].flac   (+ per-album index.html)
 ```
+
+### YouTube stopped working?
+
+YouTube changes every few weeks and breaks the `yt-dlp` release before it, and
+a `yt-dlp` installed by pip/pipx cannot update itself. So the app looks after
+its own copy: before a download it checks PyPI (at most once a day) and
+upgrades if there is a newer release, and if a download fails it updates and
+retries once. You can also force it — **Update yt-dlp** in the GUI, or
+`spatial-standards --update-ytdlp` — and turn it off with
+`SPATIAL_STANDARDS_NO_YTDLP_UPDATE=1` (or `--no-ytdlp-update`). A `yt-dlp` you
+installed some other way (Homebrew, apt) is never touched; the error message
+tells you how to update that one.
 
 ## How it works
 

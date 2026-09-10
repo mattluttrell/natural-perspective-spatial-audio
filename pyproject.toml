@@ -42,7 +42,11 @@ full = [
     "anthropic>=0.40",
     "demucs>=4.0",
     "audio-separator[cpu]",
-    "yt-dlp",
+    # yt-dlp's `default` extra is the JS-challenge scripts and HTTP stack
+    # YouTube needs; `deno` is a JavaScript runtime as a pip wheel, found by
+    # yt-dlp beside the interpreter. A bare `yt-dlp` fails on YouTube today.
+    # The app keeps this copy current itself (see ytdlp_update.py).
+    "yt-dlp[default,deno]",
     # torchaudio >=2.8 routes audio save/load through torchcodec, which links
     # against the system FFmpeg libraries (install FFmpeg: `brew install ffmpeg`,
     # `apt install ffmpeg`). Without it, Demucs's stem-writing dies with
@@ -67,3 +71,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 spatial_standards = ["assets/*.png"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

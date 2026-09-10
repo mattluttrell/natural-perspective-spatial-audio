@@ -23,7 +23,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
-from . import RIGHTS_NOTICE, __version__
+from . import RIGHTS_NOTICE, __version__, proc, ytdlp_update
 from .envfile import load_env
 from .ingest import expand_inputs, has_directory, is_url
 from .pipeline import (Bins, SkippedInput, ensure_ffmpeg_on_path, process,
@@ -248,15 +248,27 @@ class App:
         ttk.Entry(row2, textvariable=self.out_dir).pack(side="left", fill="x", expand=True)
         ttk.Button(row2, text="Browse…", command=self.pick_out).pack(side="left", padx=4)
 
-        # --- Go + log ---
-        self.go_btn = ttk.Button(root, text="Go", command=self.start)
-        self.go_btn.pack(**pad)
+        # --- Go / Cancel + log ---
+        gorow = ttk.Frame(root)
+        gorow.pack(fill="x", **pad)
+        self.go_btn = ttk.Button(gorow, text="Go", command=self.start)
+        self.go_btn.pack(side="left", expand=True)
+        self.cancel_btn = ttk.Button(gorow, text="Cancel", command=self.cancel, state="disabled")
+        self.cancel_btn.pack(side="left", padx=4)
+        # yt-dlp is the one tool that goes stale (YouTube changes; a pip-installed
+        # yt-dlp can't update itself). Updates also happen automatically before
+        # a download; this is the manual button for "YouTube stopped working".
+        ttk.Button(gorow, text="Update yt-dlp", command=self.update_ytdlp).pack(side="right")
 
         self.log = tk.Text(root, height=10, state="disabled",
                            bg=PANEL, fg=MUTED, insertbackground=FG,
                            highlightthickness=1, highlightbackground=BORDER,
                            highlightcolor=BORDER, borderwidth=0)
         self.log.pack(fill="both", expand=True, **pad)
+        # Progress lines ("separating … 45% · about 1:02 left") overwrite the
+        # step's previous line instead of stacking up.
+        self._last_msg: str | None = None
+        self._last_start: str | None = None
 
         # Restore last session, then layer any command-line inputs on top.
         prefs = load_settings()
@@ -301,6 +313,7 @@ class App:
 
     def on_close(self):
         self.save_prefs()
+        proc.cancel()  # don't leave a Demucs running headless after the window is gone
         self.root.destroy()
 
     # -- input handling --
@@ -377,12 +390,48 @@ class App:
             while True:
                 msg = self.log_queue.get_nowait()
                 self.log.configure(state="normal")
+                if proc.replaces(self._last_msg, msg) and self._last_start:
+                    self.log.delete(self._last_start, "end-1c")  # overwrite the step's line
+                else:
+                    self._last_start = self.log.index("end-1c")
+                self._last_msg = msg
                 self.log.insert("end", msg + "\n")
                 self.log.see("end")
                 self.log.configure(state="disabled")
         except queue.Empty:
             pass
         self.root.after(200, self.drain_log)
+
+    def _set_running(self, running: bool):
+        self.go_btn.configure(state="disabled" if running else "normal",
+                              text="Working…" if running else "Go")
+        self.cancel_btn.configure(state="normal" if running else "disabled")
+
+    def cancel(self):
+        self.cancel_btn.configure(state="disabled")
+        self.log_line("cancelling — stopping the current step…")
+        proc.cancel()
+
+    def update_ytdlp(self):
+        """Manual yt-dlp update (the automatic one runs before each download)."""
+        if self.worker and self.worker.is_alive():
+            self.log_line("busy — update yt-dlp after the current batch finishes.")
+            return
+        bins = bins_from_env()
+
+        def work():
+            if ytdlp_update.managed(bins.ytdlp):
+                ytdlp_update.upgrade(bins.ytdlp, self.log_line)
+            else:
+                v = ytdlp_update.installed_version(bins.ytdlp) or "not found"
+                self.log_line(f"yt-dlp ({v}) at {bins.ytdlp} was not installed by this app, "
+                              f"so it won't be changed. To update it: "
+                              f"{ytdlp_update.manual_hint(bins.ytdlp)}")
+            self.root.after(0, lambda: self._set_running(False))
+
+        self._set_running(True)
+        self.worker = threading.Thread(target=work, daemon=True)
+        self.worker.start()
 
     def start(self):
         if self.worker and self.worker.is_alive():
@@ -411,7 +460,8 @@ class App:
                 return
 
         self.save_prefs()
-        self.go_btn.configure(state="disabled", text="Working…")
+        proc.reset()
+        self._set_running(True)
         self.worker = threading.Thread(
             target=self.run_batch,
             args=(sources, std, opt, out, profile, comments_path,
@@ -422,16 +472,30 @@ class App:
     def run_batch(self, sources: list[str], standard: str, optimized: bool, out: Path,
                   profile=None, comments_path: str | None = None, want_video: bool = False,
                   recursive: bool = True):
+        # Whatever happens in here — including an error nobody anticipated —
+        # the buttons must come back, or the window is stuck on "Working…".
+        try:
+            self._run_batch(sources, standard, optimized, out, profile, comments_path,
+                            want_video, recursive)
+        except proc.Cancelled:
+            self.log_line("Cancelled.")
+        except Exception as e:
+            self.log_line(f"error: {e}")
+        finally:
+            self.root.after(0, lambda: self._set_running(False))
+
+    def _run_batch(self, sources, standard, optimized, out, profile, comments_path,
+                   want_video, recursive):
         bins = bins_from_env()
-        ensure_ffmpeg_on_path(bins.ffmpeg)  # fall back to static-ffmpeg if missing
+        ensure_ffmpeg_on_path(bins.ffmpeg, progress=self.log_line)
         # Expand folders → files and playlist URLs → each video (network for
         # playlists), off the UI thread.
         try:
             self.log_line("reading inputs…")
-            sources = expand_inputs(sources, recursive=recursive, ytdlp=bins.ytdlp)
+            sources = expand_inputs(sources, recursive=recursive, ytdlp=bins.ytdlp,
+                                    progress=self.log_line)
         except (FileNotFoundError, RuntimeError) as e:
             self.log_line(f"error: {e}")
-            self.root.after(0, lambda: self.go_btn.configure(state="normal", text="Go"))
             return
         # The comments field accepts either a file path or typed-in notes.
         comments = comments_text = None
@@ -443,6 +507,9 @@ class App:
                 comments_text = comments_path
         failures = skipped = 0
         for i, src in enumerate(sources, 1):
+            if proc.cancelled():
+                self.log_line(f"Cancelled with {len(sources) - i + 1} input(s) left.")
+                break
             self.log_line(f"[{i}/{len(sources)}] {src}")
             try:
                 if standard == "natural":
@@ -460,12 +527,15 @@ class App:
             except SkippedInput as e:
                 skipped += 1
                 self.log_line(f"    skipped: {e}")
+            except proc.Cancelled:
+                self.log_line("    cancelled.")
+                break
             except Exception as e:
                 failures += 1
                 self.log_line(f"    FAILED: {e}")
-        ok = len(sources) - failures - skipped
-        self.log_line(f"Finished: {ok} ok, {failures} failed, {skipped} skipped.")
-        self.root.after(0, lambda: self.go_btn.configure(state="normal", text="Go"))
+        else:
+            ok = len(sources) - failures - skipped
+            self.log_line(f"Finished: {ok} ok, {failures} failed, {skipped} skipped.")
 
 
 def first_run_ack(root: tk.Tk) -> bool:

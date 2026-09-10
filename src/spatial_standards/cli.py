@@ -9,16 +9,44 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import sys
 from pathlib import Path
 
-from . import RIGHTS_NOTICE, __version__
+from . import RIGHTS_NOTICE, __version__, proc, ytdlp_update
 from .envfile import load_env
 from .ingest import expand_inputs
 from .pipeline import (STANDARDS, Bins, SkippedInput, TrackMeta,
                        ensure_ffmpeg_on_path, process, process_natural,
                        resolve_bin, retag_tree)
 from .system_profile import parse_system_profile
+
+
+class _Printer:
+    """Step logger for the terminal. On a TTY each step's progress updates
+    ("separating … 45% · about 1:02 left") redraw the step's own line, so a
+    five-minute Demucs run doesn't scroll pages; piped output gets one line
+    per update. Call `done()` before printing anything else directly."""
+
+    def __init__(self):
+        self.tty = sys.stdout.isatty()
+        self.last: str | None = None  # the message currently on the open line
+
+    def __call__(self, msg: str) -> None:
+        if not self.tty:
+            print(f"  {msg}", flush=True)
+            return
+        if self.last is not None and not proc.replaces(self.last, msg):
+            print()  # finish the previous line
+        width = shutil.get_terminal_size().columns - 1
+        print(f"\r  {msg}"[:width].ljust(width), end="", flush=True)
+        self.last = msg
+
+    def done(self) -> None:
+        if self.last is not None:
+            print()
+            self.last = None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -79,6 +107,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--separator-bin", default="audio-separator",
                    help="audio-separator command (Front Row crowd pass)")
     p.add_argument("--ytdlp-bin", default="yt-dlp", help="yt-dlp command (URL inputs)")
+    p.add_argument("--update-ytdlp", action="store_true",
+                   help="update the yt-dlp this app installed (pip, in its own "
+                        "environment) and exit — the fix when YouTube URLs stop "
+                        "working. This also happens automatically before downloads.")
+    p.add_argument("--no-ytdlp-update", action="store_true",
+                   help="never update yt-dlp automatically (same as "
+                        "SPATIAL_STANDARDS_NO_YTDLP_UPDATE=1)")
     p.add_argument("--keep-work", action="store_true",
                    help="keep the temporary work directory (stems, intermediate mixes)")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -88,17 +123,30 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     load_env()  # pick up ANTHROPIC_API_KEY etc. from .env if present
     args = build_parser().parse_args(argv)
-    ensure_ffmpeg_on_path(args.ffmpeg_bin)  # fall back to static-ffmpeg if needed
+    say = _Printer()
+    ensure_ffmpeg_on_path(args.ffmpeg_bin, progress=say)  # fall back to static-ffmpeg if needed
+    if args.no_ytdlp_update:
+        os.environ["SPATIAL_STANDARDS_NO_YTDLP_UPDATE"] = "1"
+
+    if args.update_ytdlp:
+        ytdlp = resolve_bin(args.ytdlp_bin)
+        if ytdlp_update.managed(ytdlp):
+            ytdlp_update.upgrade(ytdlp, say)
+            return 0
+        v = ytdlp_update.installed_version(ytdlp) or "not found"
+        print(f"yt-dlp ({v}) at {ytdlp} was not installed by this app, so it is left "
+              f"alone. To update it: {ytdlp_update.manual_hint(ytdlp)}")
+        return 1
 
     if args.retag is not None:
-        done, skipped = retag_tree(args.retag, progress=lambda m: print(f"  {m}", flush=True),
-                                   ffmpeg=args.ffmpeg_bin)
+        done, skipped = retag_tree(args.retag, progress=say, ffmpeg=args.ffmpeg_bin)
+        say.done()
         print(f"retagged {done}, skipped {skipped}")
         return 0
 
     try:
         args.inputs = expand_inputs(args.inputs, recursive=not args.no_recursive,
-                                    ytdlp=resolve_bin(args.ytdlp_bin))
+                                    ytdlp=resolve_bin(args.ytdlp_bin), progress=say)
     except (FileNotFoundError, RuntimeError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -151,14 +199,17 @@ def main(argv: list[str] | None = None) -> int:
                 comments=nat_comments, comments_text=nat_comments_text, cover_art=args.cover,
                 model=args.model, force_default=args.default_config,
                 web_search=not args.no_research,
-                keep_work=args.keep_work, progress=lambda m: print(f"  {m}", flush=True))
-            print(f"  -> {dest}")
-            print(f"  docs -> {sidecar.parent / 'index.html'}")
+                keep_work=args.keep_work, progress=say)
+            say(f"-> {dest}")
+            say(f"docs -> {sidecar.parent / 'index.html'}")
+            say.done()
             return 0
         except SkippedInput as e:
-            print(f"  skipped: {e}")
+            say(f"skipped: {e}")
+            say.done()
             return 0
         except Exception as e:
+            say.done()
             print(f"  FAILED: {e}", file=sys.stderr)
             return 1
 
@@ -169,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
 
     failures = skipped = 0
     for source in args.inputs:
+        say.done()
         print(f"Processing: {source}")
         try:
             if args.standard == "natural":
@@ -179,22 +231,28 @@ def main(argv: list[str] | None = None) -> int:
                     model=args.model, force_default=args.default_config,
                     web_search=not args.no_research,
                     keep_work=args.keep_work,
-                    progress=lambda m: print(f"  {m}", flush=True))
-                print(f"  -> {dest}")
-                print(f"  docs -> {sidecar.parent / 'index.html'}")
+                    progress=say)
+                say(f"-> {dest}")
+                say(f"docs -> {sidecar.parent / 'index.html'}")
             else:
                 dest = process(source, standard=args.standard, optimized=args.optimized,
                                out_dir=args.out, meta=meta, bins=bins,
                                system_profile=profile,
                                keep_work=args.keep_work,
-                               progress=lambda m: print(f"  {m}", flush=True))
-                print(f"  -> {dest}")
+                               progress=say)
+                say(f"-> {dest}")
         except SkippedInput as e:
             skipped += 1
-            print(f"  skipped: {e}")
+            say(f"skipped: {e}")
+        except proc.Cancelled:
+            say.done()
+            print("Cancelled.")
+            return 130
         except Exception as e:  # keep batch going; report at the end
             failures += 1
+            say.done()
             print(f"  FAILED: {e}", file=sys.stderr)
+    say.done()
 
     if skipped:
         print(f"\n{skipped} input(s) skipped (no readable audio).")

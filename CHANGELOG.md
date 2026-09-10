@@ -2,6 +2,28 @@
 
 ## v0.2.0 — unreleased
 
+- **Live progress.** Downloads, the crowd split and Demucs report percent
+  done and time remaining as they run (one line that updates, in the GUI and
+  in a terminal) instead of a single message followed by minutes of silence.
+- **Cancel.** The GUI has a Cancel button that stops the current tool and the
+  rest of the batch; closing the window now also stops a running Demucs rather
+  than leaving it going in the background.
+- **yt-dlp keeps itself current.** A pip/pipx-installed yt-dlp cannot
+  self-update, and YouTube breaks old releases every few weeks. The app now
+  upgrades the yt-dlp it installed (in its own environment) when PyPI has a
+  newer release — checked before downloads, at most once a day — and on a
+  failed download it updates and retries once. Manual: **Update yt-dlp** in
+  the GUI or `spatial-standards --update-ytdlp`; opt out with
+  `SPATIAL_STANDARDS_NO_YTDLP_UPDATE=1`. A yt-dlp from elsewhere is left
+  alone, with the update command shown in the error instead.
+- `[full]` now installs `yt-dlp[default,deno]` — the JavaScript runtime and
+  challenge scripts YouTube requires; a bare `yt-dlp` no longer works there.
+- Faster: stem-level measurement and stem caching run their seven ffmpeg
+  passes concurrently instead of one after another.
+- Fixed: an unexpected error while reading inputs left the GUI stuck on
+  "Working…"; a failed tag write is now reported with FFmpeg's message.
+- yt-dlp is told which FFmpeg to use (`--ffmpeg-location`) when one is
+  configured, so its WAV/MKV conversion matches the rest of the pipeline.
 - **YouTube playlist support.** A playlist URL is expanded to every video in it,
   and each is processed as its own track (CLI and GUI). A `watch?v=…&list=…`
   link still processes just that one video, so sharing a video that happens to be

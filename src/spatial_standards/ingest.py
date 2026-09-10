@@ -2,11 +2,12 @@
 downloaded to WAV with yt-dlp (an external command — never bundled)."""
 from __future__ import annotations
 
+import os
 import re
-import subprocess
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from . import proc, ytdlp_update
 from .video import VIDEO_EXTENSIONS
 
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma", ".aiff", ".alac"}
@@ -32,15 +33,22 @@ def is_playlist_url(url: str) -> bool:
     return "list" in q and "v" not in q
 
 
-def _expand_playlist(url: str, ytdlp: str) -> list[str]:
+def _expand_playlist(url: str, ytdlp: str, progress=None) -> list[str]:
     """Resolve a playlist URL to canonical single-video watch URLs (metadata
     only — no downloads), so each is processed as its own input."""
+    step = progress or (lambda msg: None)
     cmd = [ytdlp, "--no-cookies-from-browser", "--flat-playlist",
            "--print", "%(id)s", url]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"yt-dlp failed to read playlist:\n{proc.stderr.strip()}")
-    ids = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+
+    def run():
+        res = proc.run(cmd)
+        if res.returncode != 0:
+            raise RuntimeError(f"yt-dlp failed to read playlist:\n{res.stderr.strip()}")
+        return res
+
+    ytdlp_update.ensure_current(ytdlp, step)
+    res = ytdlp_update.retry_after_update(run, ytdlp, step)
+    ids = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
     if not ids:
         raise RuntimeError(f"No videos found in playlist: {url}")
     return [f"https://www.youtube.com/watch?v={vid}" for vid in ids]
@@ -53,15 +61,16 @@ def has_directory(sources: list[str]) -> bool:
 
 
 def expand_inputs(sources: list[str], recursive: bool = True,
-                  ytdlp: str = "yt-dlp") -> list[str]:
+                  ytdlp: str = "yt-dlp", progress=None) -> list[str]:
     """Expand each source into the concrete inputs it represents: a directory
     becomes the audio/video files it contains (sorted); a playlist URL becomes
     each video's URL; files and single-video URLs pass through unchanged.
-    `recursive` controls whether sub-folders are descended (rglob vs glob)."""
+    `recursive` controls whether sub-folders are descended (rglob vs glob).
+    `progress(msg)` reports a yt-dlp update, if one is needed for a playlist."""
     out: list[str] = []
     for s in sources:
         if is_url(s):
-            out.extend(_expand_playlist(s, ytdlp) if is_playlist_url(s) else [s])
+            out.extend(_expand_playlist(s, ytdlp, progress) if is_playlist_url(s) else [s])
             continue
         p = Path(s).expanduser()
         if p.is_dir():
@@ -81,12 +90,15 @@ def expand_inputs(sources: list[str], recursive: bool = True,
 
 
 def ingest(source: str, work_dir: Path, ytdlp_bin: str = "yt-dlp",
-           want_video: bool = False) -> tuple[Path, str | None]:
+           want_video: bool = False, ffmpeg_bin: str | None = None,
+           progress=None) -> tuple[Path, str | None]:
     """Return (media-path, source-title-or-None) for a file path or URL.
 
     Local audio or video files pass straight through. For URLs, `want_video`
     downloads the full video (a single video — playlists are not expanded)
-    instead of the default audio-only extraction."""
+    instead of the default audio-only extraction. `ffmpeg_bin`, when it is a
+    path, is handed to yt-dlp so its WAV/MKV conversion uses the same FFmpeg
+    as the rest of the pipeline. `progress(pct, eta)` follows the download."""
     if not is_url(source):
         p = Path(source).expanduser()
         if not p.exists():
@@ -99,28 +111,25 @@ def ingest(source: str, work_dir: Path, ytdlp_bin: str = "yt-dlp",
     # --no-cookies-from-browser overrides a global `--cookies-from-browser` in
     # the user's yt-dlp config (which fails without a keyring / secretstorage);
     # our downloads don't need browser cookies for public content.
+    # --progress --newline: one "[download]  45.2% … ETA 00:02" line per update
+    # on stdout even under --quiet; proc.run turns them into progress calls and
+    # strips them, leaving the two --print values.
+    common = [ytdlp_bin, "--no-cookies-from-browser", "--no-playlist",
+              "-o", str(work_dir / "%(id)s.%(ext)s"),
+              "--print", "%(title)s", "--print", "after_move:filepath",
+              "--no-simulate", "--quiet", "--progress", "--newline"]
+    if ffmpeg_bin and os.path.dirname(ffmpeg_bin):
+        common += ["--ffmpeg-location", os.path.dirname(ffmpeg_bin)]
     if want_video:
-        cmd = [
-            ytdlp_bin, "--no-cookies-from-browser",
-            "-f", "bv*+ba/b", "--merge-output-format", "mkv",
-            "--no-playlist", "-o", str(work_dir / "%(id)s.%(ext)s"),
-            "--print", "%(title)s", "--print", "after_move:filepath",
-            "--no-simulate", "--quiet", source,
-        ]
+        cmd = common + ["-f", "bv*+ba/b", "--merge-output-format", "mkv", source]
         exts = (".mkv", ".mp4", ".webm", ".mov", ".m4v")
     else:
-        cmd = [
-            ytdlp_bin, "--no-cookies-from-browser",
-            "-x", "--audio-format", "wav", "--no-playlist",
-            "-o", str(work_dir / "%(id)s.%(ext)s"),
-            "--print", "%(title)s", "--print", "after_move:filepath",
-            "--no-simulate", "--quiet", source,
-        ]
+        cmd = common + ["-x", "--audio-format", "wav", source]
         exts = (".wav",)
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"yt-dlp failed:\n{proc.stderr.strip()}")
-    lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+    res = proc.run(cmd, progress=progress)
+    if res.returncode != 0:
+        raise RuntimeError(f"yt-dlp failed:\n{res.stderr.strip()}")
+    lines = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
     files = [ln for ln in lines if ln.lower().endswith(exts)]
     if not files:
         raise RuntimeError("yt-dlp reported success but produced no output file")

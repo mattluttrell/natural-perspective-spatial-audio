@@ -15,12 +15,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import __version__
 from . import ingest as ingest_mod
-from . import mix, mixconfig, natural, optimize, report, separate, video
+from . import mix, mixconfig, natural, optimize, proc, report, separate, video, ytdlp_update
 from .system_profile import SystemProfile, parse_system_profile, parse_system_profile_text
 from .tag import tag_flac
 
@@ -79,20 +80,34 @@ def resolve_bin(name: str) -> str:
     return name
 
 
-def ensure_ffmpeg_on_path(ffmpeg: str = "ffmpeg") -> None:
-    """If ffmpeg isn't found, fall back to the pip-installed ``static-ffmpeg``
-    (the ``[full]`` extra), which provides both ffmpeg and ffprobe and prepends
-    them to PATH — so a fresh machine works with no system FFmpeg install. The
-    binaries are fetched once on first use. Best-effort and silent: if neither
-    a system ffmpeg nor static-ffmpeg is present, the normal "not found" error
-    later guides the user to install FFmpeg."""
+def ensure_ffmpeg_on_path(ffmpeg: str = "ffmpeg", progress=None) -> None:
+    """If ffmpeg isn't found, fall back to a pip-installed ``static-ffmpeg``
+    (if the user has it), which provides both ffmpeg and ffprobe and prepends
+    them to PATH. The binaries are fetched once on first use, which can take a
+    minute — say so through `progress`. Best-effort: if neither a system
+    ffmpeg nor static-ffmpeg is present, the normal "not found" error later
+    guides the user to install FFmpeg."""
     if shutil.which(ffmpeg) or os.path.isfile(ffmpeg):
         return
     try:
         import static_ffmpeg
+    except Exception:
+        return
+    if progress:
+        progress("ffmpeg not on PATH — using static-ffmpeg (downloads it on first use)…")
+    try:
         static_ffmpeg.add_paths()  # downloads once, prepends ffmpeg+ffprobe to PATH
     except Exception:
         pass
+
+
+def _bar(step, label: str):
+    """A `progress(pct, eta)` callback that reports through `step` as
+    '<label> 45% · about 1:02 left' — the format the CLI and GUI overwrite
+    in place. `step` also gets the bare label first, so the line exists
+    before the first bar update arrives."""
+    step(label)
+    return lambda pct, eta: step(proc.progress_message(label, pct, eta))
 
 
 @dataclass
@@ -147,21 +162,28 @@ def _separated(standard: str, audio: Path, work_dir: Path, bins: Bins,
 
     crowd_file = None
     if standard == "frontrow":
-        step("splitting crowd from performance (crowd model)…")
-        performance, crowd_file = separate.crowd_pass(audio, work_dir, bins.separator)
-        step("separating instruments (Demucs)…")
-        raw = separate.separate_stems(performance, work_dir, bins.demucs)
+        performance, crowd_file = separate.crowd_pass(
+            audio, work_dir, bins.separator,
+            progress=_bar(step, "splitting crowd from performance (crowd model)…"))
+        raw = separate.separate_stems(
+            performance, work_dir, bins.demucs,
+            progress=_bar(step, "separating instruments (Demucs)…"))
     else:
-        step("separating instruments (Demucs)…")
-        raw = separate.separate_stems(audio, work_dir, bins.demucs)
+        raw = separate.separate_stems(
+            audio, work_dir, bins.demucs,
+            progress=_bar(step, "separating instruments (Demucs)…"))
 
     if cdir is None:
         return raw, crowd_file
 
-    for name, src in raw.items():
-        _to_flac(src, cdir / f"{name}.flac", bins.ffmpeg)
+    # Seven FLAC encodes, each a full pass over the track — run them together.
+    step("caching stems…")
+    jobs = [(src, cdir / f"{name}.flac") for name, src in raw.items()]
     if crowd_file is not None:
-        _to_flac(crowd_file, cdir / "crowd.flac", bins.ffmpeg)
+        jobs.append((crowd_file, cdir / "crowd.flac"))
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        for f in [pool.submit(_to_flac, src, dst, bins.ffmpeg) for src, dst in jobs]:
+            f.result()
     stems = {n: cdir / f"{n}.flac" for n in separate.STEM_NAMES}
     return stems, (cdir / "crowd.flac" if crowd_file is not None else None)
 
@@ -175,10 +197,19 @@ def _ingest_cached(source: str, work_dir: Path, bins: Bins, step,
     if not ingest_mod.is_url(source):
         return ingest_mod.ingest(source, work_dir / "audio", bins.ytdlp, want_video=want_video)
 
-    msg = "downloading video…" if want_video else "downloading audio…"
+    def download() -> tuple[Path, str | None]:
+        # A stale yt-dlp is the usual reason a URL fails: freshen ours first if
+        # a release is out, and on failure update-and-retry once.
+        ytdlp_update.ensure_current(bins.ytdlp, step)
+        label = "downloading video…" if want_video else "downloading audio…"
+        return ytdlp_update.retry_after_update(
+            lambda: ingest_mod.ingest(source, work_dir / "audio", bins.ytdlp,
+                                      want_video=want_video, ffmpeg_bin=bins.ffmpeg,
+                                      progress=_bar(step, label)),
+            bins.ytdlp, step)
+
     if cache_root is None:
-        step(msg)
-        return ingest_mod.ingest(source, work_dir / "audio", bins.ytdlp, want_video=want_video)
+        return download()
 
     ext = "mkv" if want_video else "wav"
     key = hashlib.sha1((("video:" if want_video else "") + source).encode()).hexdigest()
@@ -189,8 +220,7 @@ def _ingest_cached(source: str, work_dir: Path, bins: Bins, step,
         title = title_file.read_text().strip() if title_file.exists() else None
         return cached, title or None
 
-    step(msg)
-    media, title = ingest_mod.ingest(source, work_dir / "audio", bins.ytdlp, want_video=want_video)
+    media, title = download()
     cached.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(media, cached)
     if title:
@@ -283,6 +313,7 @@ def process(source: str, *, standard: str, optimized: bool, out_dir: Path,
         # model's training domain) before Demucs, so stems never contained
         # applause. Separation results are cached by audio content hash.
         stems, crowd = _separated(standard, audio, work_dir, bins, step)
+        proc.check()
         step("mixing 7.1 stage…")
         if standard == "frontrow":
             mix.mix_front_row(stems, [crowd], mix_file, bins.ffmpeg)
@@ -304,6 +335,7 @@ def process(source: str, *, standard: str, optimized: bool, out_dir: Path,
                 collect["gains"] = gains
             final_src = optimize.apply_gains(mix_file, gains, work_dir / "mix_optimized.flac", bins.ffmpeg)
 
+        proc.check()
         dest_dir = out_dir / _safe_filename(artist) / album
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest = dest_dir / f"{_safe_filename(title)} [{album}].flac"
@@ -396,6 +428,7 @@ def process_natural(source: str = "", *, out_dir: Path, meta: TrackMeta | None =
             # Always crowd-first, so the model sees the crowd stem's actual level.
             stems, crowd = _separated("frontrow", audio, work_dir, bins, step)
 
+        proc.check()
         step("measuring stem levels…")
         stem_levels = optimize.measure_stem_levels(stems, crowd, bins.ffmpeg)
 
@@ -419,6 +452,7 @@ def process_natural(source: str = "", *, out_dir: Path, meta: TrackMeta | None =
         if config is None:
             config = mixconfig.default_config()
 
+        proc.check()
         mix_file = work_dir / "mix.flac"
         step("mixing 7.1 stage from config…")
         mixconfig.mix_from_config(stems, crowd, config, mix_file, bins.ffmpeg)
@@ -449,6 +483,7 @@ def process_natural(source: str = "", *, out_dir: Path, meta: TrackMeta | None =
             final_src = optimize.apply_gains(mix_file, channel_gains,
                                              work_dir / "mix_optimized.flac", bins.ffmpeg)
 
+        proc.check()
         comment, genre, lyrics = natural.tag_fields(config)
         dest_dir = out_dir / _safe_filename(artist) / NATURAL_ALBUM
         dest_dir.mkdir(parents=True, exist_ok=True)

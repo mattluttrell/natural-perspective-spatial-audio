@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 TARGET_TOTAL_DB = -20.0   # configured "normal" overall RMS for every track
@@ -80,11 +81,15 @@ def measure_mean_volume(path: Path, ffmpeg_bin: str = "ffmpeg") -> float:
 
 def measure_stem_levels(stems: dict[str, Path], crowd: Path | None = None,
                         ffmpeg_bin: str = "ffmpeg") -> dict[str, float]:
-    """Per-stem mean volume (dB), including crowd when present."""
-    levels = {name: measure_mean_volume(p, ffmpeg_bin) for name, p in stems.items()}
+    """Per-stem mean volume (dB), including crowd when present. Each stem is a
+    full decode, so the seven run concurrently — one ffmpeg per stem."""
+    files = dict(stems)
     if crowd is not None:
-        levels["crowd"] = measure_mean_volume(crowd, ffmpeg_bin)
-    return levels
+        files["crowd"] = crowd
+    with ThreadPoolExecutor(max_workers=len(files)) as pool:
+        futures = {name: pool.submit(measure_mean_volume, p, ffmpeg_bin)
+                   for name, p in files.items()}
+    return {name: f.result() for name, f in futures.items()}
 
 
 def apply_gains(mix_file: Path, gains: list[float], out_file: Path,

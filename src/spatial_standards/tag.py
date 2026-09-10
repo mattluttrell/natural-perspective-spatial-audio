@@ -54,7 +54,9 @@ def tag_flac(path: Path, *, title: str, artist: str, album: str,
         cmd += ["-metadata", f"{key}={value}"]
     cmd.append(str(tmp))
     try:
-        subprocess.run(cmd, check=True)
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError(f"tagging failed:\n{res.stderr.strip()[-1000:]}")
         os.replace(tmp, path)
     finally:
         if tmp.exists():
