@@ -20,48 +20,6 @@ STEMS = ("vocals", "guitar", "piano", "bass", "drums", "other", "crowd")
 
 MAX_WEIGHT = 4.0
 LIMIT = 0.95
-# Crossover filters are 4th-order Linkwitz-Riley (two cascaded 2nd-order
-# Butterworth sections). An LR4 low-pass and an LR4 high-pass at the same
-# frequency sum flat and IN PHASE, so an instrument split between the sub
-# channel (lowpass_hz) and the mains (a source's highpass_hz) adds back up to
-# itself. A single 2-pole pair — what the LFE low-pass used to be — is 180°
-# apart at the crossover: the two halves cancel right where bass punches.
-# Without a high-pass partner, the same stem full-range in the mains overlaps
-# the low-passed LFE copy with ~90° of phase lag and partly cancels it too.
-MIN_XOVER_HZ, MAX_XOVER_HZ = 30, 400
-
-# Crowd bleed. The crowd model takes most of the audience out before Demucs
-# runs, but Demucs still files part of any applause under "vocals" (cheers,
-# whistles) and "guitar"/"other"/"piano" (broadband noise) — measured on a
-# live album: crowd stem -22.6 dB during the closing applause, vocals -35.4,
-# guitar -40.5, while drums and bass stayed near -55. Those stems live in the
-# front speakers, so the audience leaks to the front. When the mix routes a
-# crowd stem, it keys a compressor on those stems — in two stages, because
-# "the crowd is loud" is not enough: a band often starts playing while the
-# crowd is still cheering, and a crowd-only key ducked real music by 8 dB at
-# a song's opening. The rule is "crowd loud AND this stem quiet":
-#   1. KEY_GUARD: the crowd key is itself compressed with the STEM as its
-#      sidechain. While the stem carries music (above -32 dB) the key is
-#      squashed and nothing ducks; while the stem holds only bleed the key
-#      passes untouched.
-#   2. DUCK: the stem is compressed by that guarded key (threshold -40 dB,
-#      far above a crowd stem's level while the band is simply playing).
-DUCK_STEMS = ("vocals", "guitar", "piano", "other")
-KEY_GUARD = "threshold=0.025:ratio=20:attack=5:release=250:makeup=1:detection=rms"
-DUCK = "threshold=0.01:ratio=10:attack=15:release=350:makeup=1:detection=rms"
-
-
-def _lr4(kind: str, hz) -> str:
-    f = int(min(MAX_XOVER_HZ, max(MIN_XOVER_HZ, float(hz))))
-    return f"{kind}=f={f}:poles=2,{kind}=f={f}:poles=2"
-
-
-def _highpass(source: dict) -> int | None:
-    hp = source.get("highpass_hz")
-    try:
-        return int(hp) if hp and float(hp) > 0 else None
-    except (TypeError, ValueError):
-        return None
 # level=disabled: alimiter's default "auto level" scales the output back up
 # by 1/limit, which turns a 0.95 ceiling into 0 dBFS (measured +0.45 dB).
 # Disabled, the ceiling really is 0.95 (about -0.45 dBFS of headroom).
@@ -135,8 +93,6 @@ def validate_config(config: dict) -> None:
             if s.get("side") not in (None, "L", "R"):
                 raise ValueError(f"config: channel {ch} bad side {s.get('side')!r}")
             float(s.get("weight", 1.0))  # raises on non-numeric
-            if s.get("highpass_hz") is not None:
-                float(s["highpass_hz"])  # raises on non-numeric
             references_crowd = references_crowd or s["stem"] == "crowd"
         lp = _lowpass(routing[ch])
         if lp is not None:
@@ -199,7 +155,7 @@ def build_filtergraph(config: dict, stem_index: dict[str, int]) -> str:
             stem = s["stem"]
             if stem not in stem_index:
                 continue
-            key = (stem, s.get("side"), lp, _highpass(s))
+            key = (stem, s.get("side"), lp)
             tap_consumers[key].append(ch)
             srcs.append((key, _clamp(s.get("weight", 1.0))))
         if not srcs:
@@ -217,11 +173,7 @@ def build_filtergraph(config: dict, stem_index: dict[str, int]) -> str:
     # Per stem: prepped (stereo) → one branch per distinct tap → pan/lowpass →
     # split across that tap's consumers.
     consumer_pool: dict[tuple, deque[str]] = {}
-    routed = {k[0] for k in tap_consumers}
-    # Stems to duck under the crowd (only when a crowd stem is actually mixed).
-    ducked = [s for s in DUCK_STEMS if s in routed] \
-        if "crowd" in routed and config.get("duck_crowd_bleed", True) else []
-    for stem in sorted(routed):
+    for stem in sorted({k[0] for k in tap_consumers}):
         idx = stem_index[stem]
         prepped = f"P{idx}"
         if stem in prep:
@@ -230,20 +182,10 @@ def build_filtergraph(config: dict, stem_index: dict[str, int]) -> str:
             # so stem prep can only boost/keep, never silence a stem.
             gain = float(prep[stem].get("gain", 1.0))
             gain = 1.0 if gain <= 0 else min(MAX_WEIGHT, gain)
-            head = (f"[{idx}]volume={gain},alimiter=limit={LIMIT}:level=disabled,"
-                    f"aformat=channel_layouts=stereo")
+            stmts.append(f"[{idx}]volume={gain},alimiter=limit={LIMIT}:level=disabled,"
+                         f"aformat=channel_layouts=stereo[{prepped}]")
         else:
-            head = f"[{idx}]aformat=channel_layouts=stereo"
-        if stem == "crowd" and ducked:
-            # One copy is the crowd itself; the rest key the duckers.
-            stmts.append(f"{head},asplit={1 + len(ducked)}[{prepped}]"
-                         + "".join(f"[K{stem_index[s]}]" for s in ducked))
-        elif stem in ducked:
-            stmts.append(f"{head},asplit=2[R{idx}][G{idx}]")
-            stmts.append(f"[K{idx}][G{idx}]sidechaincompress={KEY_GUARD}[KG{idx}]")
-            stmts.append(f"[R{idx}][KG{idx}]sidechaincompress={DUCK}[{prepped}]")
-        else:
-            stmts.append(f"{head}[{prepped}]")
+            stmts.append(f"[{idx}]aformat=channel_layouts=stereo[{prepped}]")
 
         taps = [k for k in tap_consumers if k[0] == stem]
         if len(taps) == 1:
@@ -254,11 +196,10 @@ def build_filtergraph(config: dict, stem_index: dict[str, int]) -> str:
                          + "".join(f"[{b}]" for b in branches))
 
         for key, branch in zip(taps, branches):
-            _, side, lp, hp = key
+            _, side, lp = key
             pan = {"L": "pan=mono|c0=c0", "R": "pan=mono|c0=c1"}.get(
                 side, "pan=mono|c0=0.5*c0+0.5*c1")
-            chain = pan + (f",{_lr4('lowpass', lp)}" if lp else "") \
-                        + (f",{_lr4('highpass', hp)}" if hp else "")
+            chain = pan + (f",lowpass=f={int(lp)}" if lp else "")
             tap = label("t")
             stmts.append(f"[{branch}]{chain}[{tap}]")
             consumers = tap_consumers[key]

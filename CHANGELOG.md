@@ -2,35 +2,6 @@
 
 ## v0.3.0 — unreleased
 
-- **The crowd stays behind you.** On live recordings the instrument separator
-  files part of every round of applause under "vocals" and "guitar", which
-  play from the front. When a crowd stem is mixed, it now keys a compressor on
-  the vocal/guitar/piano/other stems: loud crowd ducks them, a quiet crowd
-  leaves them untouched. `duck_crowd_bleed: false` turns it off.
-
-- **A real crossover between the sub channel and the mains.** Sources take an
-  optional `highpass_hz`, and the LFE low-pass is now 4th-order
-  Linkwitz-Riley with a matching high-pass, so an instrument split between
-  LFE and a main channel sums flat and in phase. Before, the same bass
-  full-range in the mains and low-passed (2-pole, ~90° lag at the cutoff) in
-  LFE partly cancelled around the crossover — where punch lives. The model
-  is told to split low-end instruments this way instead of duplicating them.
-
-- **Embedded tags outrank filenames.** Artist, title, track number and year
-  are read from a local file's tags (ffprobe); the filename pattern is only
-  the fallback, and a leading track number ("01 - Artist - Title") is
-  stripped before it is parsed. Previously a ripped album named that way
-  was filed under an artist called "01". The source album name
-  ("Live at Loft 150") is also given to the model as a live/studio cue, and
-  the track number carries through so the spatial album sorts correctly.
-- The album name goes into the recording research question, and the model is
-  told that a "Live at …" album or an audible crowd stem means live. An
-  obscure live album was being designed as a studio scene with no crowd.
-- Bass guidance for the model: the LFE feed is only the rumble, so bass gets a
-  real full-range home unless the listener's notes say the mains should stay
-  light; with powerful subwoofers described, LFE carries the low end of the
-  whole band (bass, kick, low guitars), and a rock kit stays on the front stage.
-
 ## v0.2.0 — 2026-09-10
 
 - **Live progress.** Downloads, the crowd split and Demucs report percent

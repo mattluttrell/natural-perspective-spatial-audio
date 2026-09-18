@@ -43,25 +43,12 @@ Principles:
 - Vocals usually anchor the center (FC). Bass is largely non-directional; keep
   it out of the rear channels if the notes mention small or weak rears, and
   route low end into LFE with a lowpass around 120 Hz.
-- Bass guitar is a full-range instrument: the LFE feed carries only its rumble
-  (below ~120 Hz), while its punch and definition live at 80-250 Hz and up.
-  Unless the listener's notes say their mains should stay light on bass (big
-  subwoofers, bass-managed), give bass a real full-range home in the center or
-  front pair (around 0.6-1.0), not LFE plus a token amount elsewhere. When the
-  notes describe powerful subwoofers, make LFE carry the low end of the WHOLE
-  band — bass, kick drum, and the low end of guitars/keys — at full weights.
-  In rock and other band music the kick drum belongs in LFE at a weight that
-  lets it hit, and the drum kit belongs on the stage in front, not only in
-  the surrounds.
 - LFE is the subwoofer feed and is low-passed on playback, so only bass-type
   low end belongs there alone. Drums are full-range: a kit routed only to LFE
   loses its snare, hats, and cymbals. Always give drums (and every other
   full-range stem) a home in at least one main channel; LFE is supplemental.
 - A live/crowd recording puts the audience around and behind the listener; a
-  studio recording places the players around them with no crowd. An album
-  title such as "Live at …" / "Unplugged" / "In Concert" is strong evidence of
-  a live recording, and a crowd stem that measures above about -40 dB means an
-  audience is audible: treat both as live unless research clearly says otherwise.
+  studio recording places the players around them with no crowd.
 - Honor the free-text notes and the playback-system description: they describe
   the desired vibe AND the actual speakers. If a speaker is small, send less
   (or no) heavy low end there.
@@ -73,19 +60,8 @@ Principles:
   before deciding (e.g. search the title for "live" vs studio, the venue, the
   genre). Do not guess when a quick search would settle it.
 
-- Never put the same low-end instrument full-range in a main channel AND
-  low-passed in LFE: the LFE copy lags in phase, and the two partly cancel
-  around the crossover — exactly where bass and kick punch. Split it like a
-  speaker crossover instead: the LFE source (under lowpass_hz) plus the SAME
-  stem in the mains with highpass_hz set to the same frequency. The filters are
-  matched (4th-order Linkwitz-Riley) so the halves sum flat and in phase. Do
-  this for bass, and for drums and guitars whenever they also feed LFE. On a
-  rig described as subwoofer-centric, this is how the mains stay light on bass
-  without losing the instrument's definition.
-
 Return the decision in the required schema. Use side "mono" unless you want a
-specific left/right channel of a stereo stem. Use lowpass_hz 0 for no lowpass
-and highpass_hz 0 for no highpass on a source.
+specific left/right channel of a stereo stem. Use lowpass_hz 0 for no lowpass.
 """
 
 # Structured-output schema (array-shaped for reliability); converted to the
@@ -111,12 +87,11 @@ MODEL_SCHEMA = {
                         "type": "array",
                         "items": {
                             "type": "object", "additionalProperties": False,
-                            "required": ["stem", "side", "weight", "highpass_hz"],
+                            "required": ["stem", "side", "weight"],
                             "properties": {
                                 "stem": {"type": "string", "enum": list(mixconfig.STEMS)},
                                 "side": {"type": "string", "enum": ["L", "R", "mono"]},
                                 "weight": {"type": "number"},
-                                "highpass_hz": {"type": "integer"},
                             },
                         },
                     },
@@ -138,8 +113,6 @@ def to_config(model_out: dict) -> dict:
             src = {"stem": s["stem"], "weight": float(s.get("weight", 1.0))}
             if s.get("side") in ("L", "R"):
                 src["side"] = s["side"]
-            if int(s.get("highpass_hz") or 0) > 0:
-                src["highpass_hz"] = int(s["highpass_hz"])
             sources.append(src)
         lp = int(entry.get("lowpass_hz") or 0)
         routing[ch] = {"lowpass_hz": lp, "sources": sources} if lp > 0 else sources
@@ -190,7 +163,6 @@ def tag_fields(config: dict) -> tuple[str, str, str]:
               if isinstance(spec, dict) and spec.get("lowpass_hz") else "")
         parts = ", ".join(
             f"{s['stem']}{('/' + s['side']) if s.get('side') else ''} ×{s.get('weight', 1)}"
-            + (f" >{s['highpass_hz']}Hz" if s.get("highpass_hz") else "")
             for s in srcs)
         lines.append(f"  {ch}: {parts}{lp}")
     lines += ["", "Natural Perspective Spatial Audio Process"]
@@ -231,15 +203,13 @@ def _image_block(cover_art):
 
 
 def build_decision_content(*, artist=None, title=None, source_title=None, source=None,
-                           album=None, cover_art=None, comments_text=None,
+                           cover_art=None, comments_text=None,
                            system_profile=None, stem_levels=None) -> list[dict]:
     facts = []
     if artist:
         facts.append(f"Artist: {artist}")
     if title:
         facts.append(f"Title: {title}")
-    if album:
-        facts.append(f"Album (from the file's tags): {album}")
     if source_title and source_title != title:
         facts.append(f"Source/recording title: {source_title}")
     if source:
@@ -274,16 +244,13 @@ def _make_client(api_key):
     return anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
 
 
-def _research_query(artist, title, source_title, album=None) -> str | None:
-    """A concise question for a web-search provider to pin down the recording.
-    The album is the strongest cue an obscure track has ("Live at Loft 150"),
-    so it goes in the question."""
+def _research_query(artist, title, source_title) -> str | None:
+    """A concise question for a web-search provider to pin down the recording."""
     name = " — ".join(x for x in (artist, title) if x) or source_title
     if not name:
         return None
-    from_album = f' from the album "{album}"' if album else ""
-    return (f'"{name}"{from_album}: is this a live or a studio recording? What is '
-            f"the venue or event, and the year? Reply with only the facts.")
+    return (f'"{name}": is this a live or a studio recording? What is the venue '
+            f"or event, and the year? Reply with only the facts.")
 
 
 def _perplexity_research(query: str, api_key: str, timeout: float = 45) -> str | None:
@@ -316,7 +283,7 @@ def _perplexity_research(query: str, api_key: str, timeout: float = 45) -> str |
 
 
 def decide(*, artist=None, title=None, source_title=None, source=None,
-           album=None, cover_art=None, comments_text=None, system_profile=None,
+           cover_art=None, comments_text=None, system_profile=None,
            stem_levels=None, model=DEFAULT_MODEL, api_key=None,
            web_search: bool = True, trace: dict | None = None, client=None) -> dict:
     """Ask the model for a full mix config (validated). Raises on any failure
@@ -327,7 +294,7 @@ def decide(*, artist=None, title=None, source_title=None, source=None,
     `client` is injectable for testing."""
     content = build_decision_content(
         artist=artist, title=title, source_title=source_title, source=source,
-        album=album, cover_art=cover_art, comments_text=comments_text,
+        cover_art=cover_art, comments_text=comments_text,
         system_profile=system_profile, stem_levels=stem_levels)
 
     # Optional: if PERPLEXITY_API_KEY is set, do the web research with Perplexity
@@ -336,7 +303,7 @@ def decide(*, artist=None, title=None, source_title=None, source=None,
     # — on any failure we fall back to Anthropic's tool.
     px_key = os.environ.get("PERPLEXITY_API_KEY")
     if web_search and px_key:
-        q = _research_query(artist, title, source_title, album)
+        q = _research_query(artist, title, source_title)
         research = _perplexity_research(q, px_key) if q else None
         if research:
             content.append({"type": "text",

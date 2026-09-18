@@ -261,60 +261,13 @@ def _split_artist_title(candidate: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-_TRACKNO_RE = re.compile(r"^\s*(?:\d{1,3}|\d-\d{1,2})\s*[-._)]\s+")
-
-
-def read_tags(path: Path | str, ffmpeg_bin: str = "ffmpeg") -> dict[str, str]:
-    """Embedded tags of a local media file, keys lower-cased ('artist',
-    'title', 'album', 'track', 'date', …). Empty when ffprobe is missing or
-    the file has none. A ripped library is tagged far more reliably than its
-    filenames are patterned ("01 - The GOODING BAND - Elysium.flac" parses as
-    artist "01"), so tags outrank the filename."""
-    try:
-        proc = subprocess.run(
-            [video._ffprobe_bin(ffmpeg_bin), "-v", "error", "-show_entries", "format_tags",
-             "-of", "json", str(path)],
-            capture_output=True, text=True)
-        if proc.returncode != 0:
-            return {}
-        tags = (json.loads(proc.stdout or "{}").get("format") or {}).get("tags") or {}
-    except (OSError, ValueError):
-        return {}
-    return {str(k).lower(): str(v).strip() for k, v in tags.items() if str(v).strip()}
-
-
-def meta_from_tags(meta: TrackMeta, tags: dict[str, str]) -> TrackMeta:
-    """Fill the gaps in `meta` from embedded tags; explicit flags always win."""
-    track = None
-    m = re.match(r"\s*(\d+)", tags.get("track", "") or tags.get("tracknumber", ""))
-    if m:
-        track = int(m.group(1))
-    year = re.match(r"\s*(\d{4})", tags.get("date", "") or tags.get("year", ""))
-    return TrackMeta(
-        artist=meta.artist or tags.get("album_artist") or tags.get("albumartist") or tags.get("artist"),
-        title=meta.title or tags.get("title"),
-        track_number=meta.track_number if meta.track_number is not None else track,
-        date=meta.date or (year.group(1) if year else None),
-    )
-
-
 def _derive_meta(source: str, src_title: str | None, meta: TrackMeta) -> tuple[str, str]:
-    """Resolve (artist, title) from explicit flags / embedded tags (already
-    merged into `meta`), then 'Artist - Title' patterns in the source title or
-    filename — with a leading track number ("01 - ", "1-03. ") stripped first —
-    then fallbacks."""
+    """Resolve (artist, title) from explicit flags, then 'Artist - Title'
+    patterns in the source title/filename, then fallbacks."""
     artist, title = meta.artist, meta.title
     candidate = src_title or Path(source).stem
     if not artist or not title:
-        # Try with a leading track number stripped first; keep that reading
-        # only if an "Artist - Title" is still left ("311 - Down" is a band
-        # called 311, not track 311 of nobody).
-        stripped = _TRACKNO_RE.sub("", candidate, count=1) if not src_title else candidate
-        left, right = _split_artist_title(stripped)
-        if not (left and right):
-            left, right = _split_artist_title(candidate)
-        else:
-            candidate = stripped
+        left, right = _split_artist_title(candidate)
         if left and right:
             artist = artist or left
             title = title or right
@@ -353,8 +306,6 @@ def process(source: str, *, standard: str, optimized: bool, out_dir: Path,
         audio, src_title = _ingest_cached(source, work_dir, bins, step)
         if not video.has_audio(audio, bins.ffmpeg):
             raise SkippedInput(f"no readable audio in {Path(source).name}")
-        if not ingest_mod.is_url(source):
-            meta = meta_from_tags(meta, read_tags(audio, bins.ffmpeg))
         artist, title = _derive_meta(source, src_title, meta)
 
         mix_file = work_dir / "mix.flac"
@@ -448,7 +399,6 @@ def process_natural(source: str = "", *, out_dir: Path, meta: TrackMeta | None =
     try:
         src_title = None
         video_path = None
-        source_album = None  # the ORIGINAL release ("Live at Loft 150") — a live/studio cue
         if stems_dir is not None:
             # Pre-separated stems (e.g. a crowd-first stems folder): skip ingest
             # and separation and mix straight from them.
@@ -464,10 +414,6 @@ def process_natural(source: str = "", *, out_dir: Path, meta: TrackMeta | None =
             media, src_title = _ingest_cached(source, work_dir, bins, step, want_video=want_video)
             if not video.has_audio(media, bins.ffmpeg):
                 raise SkippedInput(f"no readable audio in {Path(source).name}")
-            if not ingest_mod.is_url(source):
-                tags = read_tags(media, bins.ffmpeg)
-                meta = meta_from_tags(meta, tags)
-                source_album = tags.get("album")
             artist, title = _derive_meta(source, src_title, meta)
 
             # If the input carries video, keep it for muxing and process its audio.
@@ -494,7 +440,6 @@ def process_natural(source: str = "", *, out_dir: Path, meta: TrackMeta | None =
                 config = natural.decide(
                     artist=meta.artist or (None if artist == "Unknown Artist" else artist),
                     title=meta.title or title, source_title=src_title, source=source,
-                    album=source_album,
                     cover_art=cover_art, comments_text=comments_text,
                     system_profile=system_profile, stem_levels=stem_levels,
                     model=model, api_key=api_key, web_search=web_search,

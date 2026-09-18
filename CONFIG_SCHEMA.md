@@ -57,17 +57,6 @@ Per-source fields:
 - `side` — `"L"` or `"R"` to take one side of a stereo stem; omit to sum mono.
 - `weight` — linear mix weight (matches ffmpeg `amix` weights, `normalize=0`).
 - a channel may instead be an object with `lowpass_hz` + `sources` (used for LFE).
-- `duck_crowd_bleed` (optional, top level, default `true`) — when a crowd stem
-  is mixed, the vocal/guitar/piano/other stems are ducked while the crowd is
-  loud. The separator files part of any applause under those stems, and they
-  live in the front speakers; this keeps the audience behind you. Set `false`
-  to hear the stems exactly as separated.
-- `highpass_hz` (optional, per source) — high-pass that source before it is
-  placed. Use it as the partner of the LFE low-pass: the same stem low-passed
-  into LFE and high-passed at the same frequency into a main channel is a
-  crossover, not a duplicate. Both filters are 4th-order Linkwitz-Riley, so the
-  halves sum flat and in phase. Without it, a stem that is full-range in the
-  mains *and* low-passed in LFE partly cancels around the crossover.
 
 ### Builder guarantees (enforced regardless of model output)
 
