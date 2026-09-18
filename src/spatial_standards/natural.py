@@ -43,6 +43,16 @@ Principles:
 - Vocals usually anchor the center (FC). Bass is largely non-directional; keep
   it out of the rear channels if the notes mention small or weak rears, and
   route low end into LFE with a lowpass around 120 Hz.
+- Bass guitar is a full-range instrument: the LFE feed carries only its rumble
+  (below ~120 Hz), while its punch and definition live at 80-250 Hz and up.
+  Unless the listener's notes say their mains should stay light on bass (big
+  subwoofers, bass-managed), give bass a real full-range home in the center or
+  front pair (around 0.6-1.0), not LFE plus a token amount elsewhere. When the
+  notes describe powerful subwoofers, make LFE carry the low end of the WHOLE
+  band — bass, kick drum, and the low end of guitars/keys — at full weights.
+  In rock and other band music the kick drum belongs in LFE at a weight that
+  lets it hit, and the drum kit belongs on the stage in front, not only in
+  the surrounds.
 - LFE is the subwoofer feed and is low-passed on playback, so only bass-type
   low end belongs there alone. Drums are full-range: a kit routed only to LFE
   loses its snare, hats, and cymbals. Always give drums (and every other

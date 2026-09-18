@@ -12,6 +12,10 @@
 - The album name goes into the recording research question, and the model is
   told that a "Live at …" album or an audible crowd stem means live. An
   obscure live album was being designed as a studio scene with no crowd.
+- Bass guidance for the model: the LFE feed is only the rumble, so bass gets a
+  real full-range home unless the listener's notes say the mains should stay
+  light; with powerful subwoofers described, LFE carries the low end of the
+  whole band (bass, kick, low guitars), and a rock kit stays on the front stage.
 
 ## v0.2.0 — 2026-09-10
 
