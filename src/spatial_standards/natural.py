@@ -48,7 +48,10 @@ Principles:
   loses its snare, hats, and cymbals. Always give drums (and every other
   full-range stem) a home in at least one main channel; LFE is supplemental.
 - A live/crowd recording puts the audience around and behind the listener; a
-  studio recording places the players around them with no crowd.
+  studio recording places the players around them with no crowd. An album
+  title such as "Live at …" / "Unplugged" / "In Concert" is strong evidence of
+  a live recording, and a crowd stem that measures above about -40 dB means an
+  audience is audible: treat both as live unless research clearly says otherwise.
 - Honor the free-text notes and the playback-system description: they describe
   the desired vibe AND the actual speakers. If a speaker is small, send less
   (or no) heavy low end there.
@@ -246,13 +249,16 @@ def _make_client(api_key):
     return anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
 
 
-def _research_query(artist, title, source_title) -> str | None:
-    """A concise question for a web-search provider to pin down the recording."""
+def _research_query(artist, title, source_title, album=None) -> str | None:
+    """A concise question for a web-search provider to pin down the recording.
+    The album is the strongest cue an obscure track has ("Live at Loft 150"),
+    so it goes in the question."""
     name = " — ".join(x for x in (artist, title) if x) or source_title
     if not name:
         return None
-    return (f'"{name}": is this a live or a studio recording? What is the venue '
-            f"or event, and the year? Reply with only the facts.")
+    from_album = f' from the album "{album}"' if album else ""
+    return (f'"{name}"{from_album}: is this a live or a studio recording? What is '
+            f"the venue or event, and the year? Reply with only the facts.")
 
 
 def _perplexity_research(query: str, api_key: str, timeout: float = 45) -> str | None:
@@ -305,7 +311,7 @@ def decide(*, artist=None, title=None, source_title=None, source=None,
     # — on any failure we fall back to Anthropic's tool.
     px_key = os.environ.get("PERPLEXITY_API_KEY")
     if web_search and px_key:
-        q = _research_query(artist, title, source_title)
+        q = _research_query(artist, title, source_title, album)
         research = _perplexity_research(q, px_key) if q else None
         if research:
             content.append({"type": "text",

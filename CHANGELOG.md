@@ -9,6 +9,9 @@
   was filed under an artist called "01". The source album name
   ("Live at Loft 150") is also given to the model as a live/studio cue, and
   the track number carries through so the spatial album sorts correctly.
+- The album name goes into the recording research question, and the model is
+  told that a "Live at …" album or an audible crowd stem means live. An
+  obscure live album was being designed as a studio scene with no crowd.
 
 ## v0.2.0 — 2026-09-10
 
