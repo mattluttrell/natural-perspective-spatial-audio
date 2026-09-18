@@ -30,6 +30,26 @@ LIMIT = 0.95
 # the low-passed LFE copy with ~90° of phase lag and partly cancels it too.
 MIN_XOVER_HZ, MAX_XOVER_HZ = 30, 400
 
+# Crowd bleed. The crowd model takes most of the audience out before Demucs
+# runs, but Demucs still files part of any applause under "vocals" (cheers,
+# whistles) and "guitar"/"other"/"piano" (broadband noise) — measured on a
+# live album: crowd stem -22.6 dB during the closing applause, vocals -35.4,
+# guitar -40.5, while drums and bass stayed near -55. Those stems live in the
+# front speakers, so the audience leaks to the front. When the mix routes a
+# crowd stem, it keys a compressor on those stems — in two stages, because
+# "the crowd is loud" is not enough: a band often starts playing while the
+# crowd is still cheering, and a crowd-only key ducked real music by 8 dB at
+# a song's opening. The rule is "crowd loud AND this stem quiet":
+#   1. KEY_GUARD: the crowd key is itself compressed with the STEM as its
+#      sidechain. While the stem carries music (above -32 dB) the key is
+#      squashed and nothing ducks; while the stem holds only bleed the key
+#      passes untouched.
+#   2. DUCK: the stem is compressed by that guarded key (threshold -40 dB,
+#      far above a crowd stem's level while the band is simply playing).
+DUCK_STEMS = ("vocals", "guitar", "piano", "other")
+KEY_GUARD = "threshold=0.025:ratio=20:attack=5:release=250:makeup=1:detection=rms"
+DUCK = "threshold=0.01:ratio=10:attack=15:release=350:makeup=1:detection=rms"
+
 
 def _lr4(kind: str, hz) -> str:
     f = int(min(MAX_XOVER_HZ, max(MIN_XOVER_HZ, float(hz))))
@@ -197,7 +217,11 @@ def build_filtergraph(config: dict, stem_index: dict[str, int]) -> str:
     # Per stem: prepped (stereo) → one branch per distinct tap → pan/lowpass →
     # split across that tap's consumers.
     consumer_pool: dict[tuple, deque[str]] = {}
-    for stem in sorted({k[0] for k in tap_consumers}):
+    routed = {k[0] for k in tap_consumers}
+    # Stems to duck under the crowd (only when a crowd stem is actually mixed).
+    ducked = [s for s in DUCK_STEMS if s in routed] \
+        if "crowd" in routed and config.get("duck_crowd_bleed", True) else []
+    for stem in sorted(routed):
         idx = stem_index[stem]
         prepped = f"P{idx}"
         if stem in prep:
@@ -206,10 +230,20 @@ def build_filtergraph(config: dict, stem_index: dict[str, int]) -> str:
             # so stem prep can only boost/keep, never silence a stem.
             gain = float(prep[stem].get("gain", 1.0))
             gain = 1.0 if gain <= 0 else min(MAX_WEIGHT, gain)
-            stmts.append(f"[{idx}]volume={gain},alimiter=limit={LIMIT}:level=disabled,"
-                         f"aformat=channel_layouts=stereo[{prepped}]")
+            head = (f"[{idx}]volume={gain},alimiter=limit={LIMIT}:level=disabled,"
+                    f"aformat=channel_layouts=stereo")
         else:
-            stmts.append(f"[{idx}]aformat=channel_layouts=stereo[{prepped}]")
+            head = f"[{idx}]aformat=channel_layouts=stereo"
+        if stem == "crowd" and ducked:
+            # One copy is the crowd itself; the rest key the duckers.
+            stmts.append(f"{head},asplit={1 + len(ducked)}[{prepped}]"
+                         + "".join(f"[K{stem_index[s]}]" for s in ducked))
+        elif stem in ducked:
+            stmts.append(f"{head},asplit=2[R{idx}][G{idx}]")
+            stmts.append(f"[K{idx}][G{idx}]sidechaincompress={KEY_GUARD}[KG{idx}]")
+            stmts.append(f"[R{idx}][KG{idx}]sidechaincompress={DUCK}[{prepped}]")
+        else:
+            stmts.append(f"{head}[{prepped}]")
 
         taps = [k for k in tap_consumers if k[0] == stem]
         if len(taps) == 1:

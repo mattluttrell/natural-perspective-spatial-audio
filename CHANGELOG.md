@@ -2,6 +2,12 @@
 
 ## v0.3.0 — unreleased
 
+- **The crowd stays behind you.** On live recordings the instrument separator
+  files part of every round of applause under "vocals" and "guitar", which
+  play from the front. When a crowd stem is mixed, it now keys a compressor on
+  the vocal/guitar/piano/other stems: loud crowd ducks them, a quiet crowd
+  leaves them untouched. `duck_crowd_bleed: false` turns it off.
+
 - **A real crossover between the sub channel and the mains.** Sources take an
   optional `highpass_hz`, and the LFE low-pass is now 4th-order
   Linkwitz-Riley with a matching high-pass, so an instrument split between

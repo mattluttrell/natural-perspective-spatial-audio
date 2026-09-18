@@ -40,3 +40,22 @@ def test_model_output_carries_highpass_through():
     cfg = natural.to_config(out)
     assert cfg["routing"]["FL"][0]["highpass_hz"] == 100
     assert "highpass_hz" not in cfg["routing"]["LFE"]["sources"][0]
+
+
+def test_crowd_keys_a_ducker_on_the_front_stems_only_when_mixed():
+    cfg = mixconfig.default_config()          # routes crowd to the surrounds
+    index = {n: i for i, n in enumerate(mixconfig.STEMS)}
+    graph = mixconfig.build_filtergraph(cfg, index)
+    routed_duckable = {"vocals", "guitar", "piano", "other"}
+    # two stages per stem: the key guard (stem squashes the crowd key) + the ducker
+    assert graph.count("sidechaincompress=") == 2 * len(routed_duckable)
+    assert graph.count(mixconfig.KEY_GUARD) == len(routed_duckable)
+    assert f"asplit={1 + len(routed_duckable)}" in graph
+    # drums and bass separate cleanly and are never ducked
+    assert f"[R{index['drums']}]" not in graph and f"[R{index['bass']}]" not in graph
+
+    off = mixconfig.default_config(); off["duck_crowd_bleed"] = False
+    assert "sidechaincompress" not in mixconfig.build_filtergraph(off, index)
+
+    no_crowd = {n: i for i, n in enumerate(n for n in mixconfig.STEMS if n != "crowd")}
+    assert "sidechaincompress" not in mixconfig.build_filtergraph(mixconfig.default_config(), no_crowd)
