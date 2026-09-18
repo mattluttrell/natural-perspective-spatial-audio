@@ -203,13 +203,15 @@ def _image_block(cover_art):
 
 
 def build_decision_content(*, artist=None, title=None, source_title=None, source=None,
-                           cover_art=None, comments_text=None,
+                           album=None, cover_art=None, comments_text=None,
                            system_profile=None, stem_levels=None) -> list[dict]:
     facts = []
     if artist:
         facts.append(f"Artist: {artist}")
     if title:
         facts.append(f"Title: {title}")
+    if album:
+        facts.append(f"Album (from the file's tags): {album}")
     if source_title and source_title != title:
         facts.append(f"Source/recording title: {source_title}")
     if source:
@@ -283,7 +285,7 @@ def _perplexity_research(query: str, api_key: str, timeout: float = 45) -> str |
 
 
 def decide(*, artist=None, title=None, source_title=None, source=None,
-           cover_art=None, comments_text=None, system_profile=None,
+           album=None, cover_art=None, comments_text=None, system_profile=None,
            stem_levels=None, model=DEFAULT_MODEL, api_key=None,
            web_search: bool = True, trace: dict | None = None, client=None) -> dict:
     """Ask the model for a full mix config (validated). Raises on any failure
@@ -294,7 +296,7 @@ def decide(*, artist=None, title=None, source_title=None, source=None,
     `client` is injectable for testing."""
     content = build_decision_content(
         artist=artist, title=title, source_title=source_title, source=source,
-        cover_art=cover_art, comments_text=comments_text,
+        album=album, cover_art=cover_art, comments_text=comments_text,
         system_profile=system_profile, stem_levels=stem_levels)
 
     # Optional: if PERPLEXITY_API_KEY is set, do the web research with Perplexity

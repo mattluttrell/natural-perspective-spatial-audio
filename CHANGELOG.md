@@ -2,6 +2,14 @@
 
 ## v0.3.0 — unreleased
 
+- **Embedded tags outrank filenames.** Artist, title, track number and year
+  are read from a local file's tags (ffprobe); the filename pattern is only
+  the fallback, and a leading track number ("01 - Artist - Title") is
+  stripped before it is parsed. Previously a ripped album named that way
+  was filed under an artist called "01". The source album name
+  ("Live at Loft 150") is also given to the model as a live/studio cue, and
+  the track number carries through so the spatial album sorts correctly.
+
 ## v0.2.0 — 2026-09-10
 
 - **Live progress.** Downloads, the crowd split and Demucs report percent
