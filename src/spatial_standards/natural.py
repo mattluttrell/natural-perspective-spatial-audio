@@ -73,8 +73,19 @@ Principles:
   before deciding (e.g. search the title for "live" vs studio, the venue, the
   genre). Do not guess when a quick search would settle it.
 
+- Never put the same low-end instrument full-range in a main channel AND
+  low-passed in LFE: the LFE copy lags in phase, and the two partly cancel
+  around the crossover — exactly where bass and kick punch. Split it like a
+  speaker crossover instead: the LFE source (under lowpass_hz) plus the SAME
+  stem in the mains with highpass_hz set to the same frequency. The filters are
+  matched (4th-order Linkwitz-Riley) so the halves sum flat and in phase. Do
+  this for bass, and for drums and guitars whenever they also feed LFE. On a
+  rig described as subwoofer-centric, this is how the mains stay light on bass
+  without losing the instrument's definition.
+
 Return the decision in the required schema. Use side "mono" unless you want a
-specific left/right channel of a stereo stem. Use lowpass_hz 0 for no lowpass.
+specific left/right channel of a stereo stem. Use lowpass_hz 0 for no lowpass
+and highpass_hz 0 for no highpass on a source.
 """
 
 # Structured-output schema (array-shaped for reliability); converted to the
@@ -100,11 +111,12 @@ MODEL_SCHEMA = {
                         "type": "array",
                         "items": {
                             "type": "object", "additionalProperties": False,
-                            "required": ["stem", "side", "weight"],
+                            "required": ["stem", "side", "weight", "highpass_hz"],
                             "properties": {
                                 "stem": {"type": "string", "enum": list(mixconfig.STEMS)},
                                 "side": {"type": "string", "enum": ["L", "R", "mono"]},
                                 "weight": {"type": "number"},
+                                "highpass_hz": {"type": "integer"},
                             },
                         },
                     },
@@ -126,6 +138,8 @@ def to_config(model_out: dict) -> dict:
             src = {"stem": s["stem"], "weight": float(s.get("weight", 1.0))}
             if s.get("side") in ("L", "R"):
                 src["side"] = s["side"]
+            if int(s.get("highpass_hz") or 0) > 0:
+                src["highpass_hz"] = int(s["highpass_hz"])
             sources.append(src)
         lp = int(entry.get("lowpass_hz") or 0)
         routing[ch] = {"lowpass_hz": lp, "sources": sources} if lp > 0 else sources
@@ -176,6 +190,7 @@ def tag_fields(config: dict) -> tuple[str, str, str]:
               if isinstance(spec, dict) and spec.get("lowpass_hz") else "")
         parts = ", ".join(
             f"{s['stem']}{('/' + s['side']) if s.get('side') else ''} ×{s.get('weight', 1)}"
+            + (f" >{s['highpass_hz']}Hz" if s.get("highpass_hz") else "")
             for s in srcs)
         lines.append(f"  {ch}: {parts}{lp}")
     lines += ["", "Natural Perspective Spatial Audio Process"]

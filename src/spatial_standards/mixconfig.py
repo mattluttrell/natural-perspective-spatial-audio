@@ -20,6 +20,28 @@ STEMS = ("vocals", "guitar", "piano", "bass", "drums", "other", "crowd")
 
 MAX_WEIGHT = 4.0
 LIMIT = 0.95
+# Crossover filters are 4th-order Linkwitz-Riley (two cascaded 2nd-order
+# Butterworth sections). An LR4 low-pass and an LR4 high-pass at the same
+# frequency sum flat and IN PHASE, so an instrument split between the sub
+# channel (lowpass_hz) and the mains (a source's highpass_hz) adds back up to
+# itself. A single 2-pole pair — what the LFE low-pass used to be — is 180°
+# apart at the crossover: the two halves cancel right where bass punches.
+# Without a high-pass partner, the same stem full-range in the mains overlaps
+# the low-passed LFE copy with ~90° of phase lag and partly cancels it too.
+MIN_XOVER_HZ, MAX_XOVER_HZ = 30, 400
+
+
+def _lr4(kind: str, hz) -> str:
+    f = int(min(MAX_XOVER_HZ, max(MIN_XOVER_HZ, float(hz))))
+    return f"{kind}=f={f}:poles=2,{kind}=f={f}:poles=2"
+
+
+def _highpass(source: dict) -> int | None:
+    hp = source.get("highpass_hz")
+    try:
+        return int(hp) if hp and float(hp) > 0 else None
+    except (TypeError, ValueError):
+        return None
 # level=disabled: alimiter's default "auto level" scales the output back up
 # by 1/limit, which turns a 0.95 ceiling into 0 dBFS (measured +0.45 dB).
 # Disabled, the ceiling really is 0.95 (about -0.45 dBFS of headroom).
@@ -93,6 +115,8 @@ def validate_config(config: dict) -> None:
             if s.get("side") not in (None, "L", "R"):
                 raise ValueError(f"config: channel {ch} bad side {s.get('side')!r}")
             float(s.get("weight", 1.0))  # raises on non-numeric
+            if s.get("highpass_hz") is not None:
+                float(s["highpass_hz"])  # raises on non-numeric
             references_crowd = references_crowd or s["stem"] == "crowd"
         lp = _lowpass(routing[ch])
         if lp is not None:
@@ -155,7 +179,7 @@ def build_filtergraph(config: dict, stem_index: dict[str, int]) -> str:
             stem = s["stem"]
             if stem not in stem_index:
                 continue
-            key = (stem, s.get("side"), lp)
+            key = (stem, s.get("side"), lp, _highpass(s))
             tap_consumers[key].append(ch)
             srcs.append((key, _clamp(s.get("weight", 1.0))))
         if not srcs:
@@ -196,10 +220,11 @@ def build_filtergraph(config: dict, stem_index: dict[str, int]) -> str:
                          + "".join(f"[{b}]" for b in branches))
 
         for key, branch in zip(taps, branches):
-            _, side, lp = key
+            _, side, lp, hp = key
             pan = {"L": "pan=mono|c0=c0", "R": "pan=mono|c0=c1"}.get(
                 side, "pan=mono|c0=0.5*c0+0.5*c1")
-            chain = pan + (f",lowpass=f={int(lp)}" if lp else "")
+            chain = pan + (f",{_lr4('lowpass', lp)}" if lp else "") \
+                        + (f",{_lr4('highpass', hp)}" if hp else "")
             tap = label("t")
             stmts.append(f"[{branch}]{chain}[{tap}]")
             consumers = tap_consumers[key]

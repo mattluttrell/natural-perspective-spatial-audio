@@ -2,6 +2,14 @@
 
 ## v0.3.0 — unreleased
 
+- **A real crossover between the sub channel and the mains.** Sources take an
+  optional `highpass_hz`, and the LFE low-pass is now 4th-order
+  Linkwitz-Riley with a matching high-pass, so an instrument split between
+  LFE and a main channel sums flat and in phase. Before, the same bass
+  full-range in the mains and low-passed (2-pole, ~90° lag at the cutoff) in
+  LFE partly cancelled around the crossover — where punch lives. The model
+  is told to split low-end instruments this way instead of duplicating them.
+
 - **Embedded tags outrank filenames.** Artist, title, track number and year
   are read from a local file's tags (ffprobe); the filename pattern is only
   the fallback, and a leading track number ("01 - Artist - Title") is

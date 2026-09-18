@@ -70,7 +70,8 @@ def _sources_str(spec) -> str:
     parts = []
     for s in srcs:
         side = f" {s['side']}" if s.get("side") in ("L", "R") else ""
-        parts.append(f"{_e(s['stem'])}{side} ×{float(s.get('weight', 1.0)):g}")
+        hp = f" &gt;{int(s['highpass_hz'])} Hz" if s.get("highpass_hz") else ""
+        parts.append(f"{_e(s['stem'])}{side} ×{float(s.get('weight', 1.0)):g}{hp}")
     return ", ".join(parts) + lp
 
 
